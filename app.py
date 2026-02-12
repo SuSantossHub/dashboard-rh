@@ -13,7 +13,28 @@ st.title("📊 Dashboard de Benefícios (Conectado ao Google Sheets)")
 def load_data():
     # O TRUQUE DO LINK:
   # Novo link formatado para exportação (TENTATIVA 1)
-    sheet_url = "https://docs.google.com/spreadsheets/d/10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ/export?format=csv"
+   @st.cache_data
+def load_data():
+    # Cole aqui o link que você pegou em "Arquivo > Publicar na Web > CSV"
+    # Ele costuma ter "/pub?output=csv" no final ou "/export?format=csv"
+    sheet_url = "COLE_O_LINK_AQUI_DENTRO_DAS_ASPAS"
+    
+    # Lê o CSV direto do link
+    df = pd.read_csv(sheet_url)
+    
+    # Tratamento para garantir que números sejam lidos corretamente
+    # Remove R$, pontos de milhar e troca vírgula decimal por ponto
+    for col in ["Custo Orçado", "Custo Realizado"]:
+        if col in df.columns:
+            if df[col].dtype == "object":
+                df[col] = df[col].astype(str).str.replace("R$", "", regex=False)
+                df[col] = df[col].str.replace(".", "", regex=False)
+                df[col] = df[col].str.replace(",", ".", regex=False)
+            
+            # Converte para número e preenche vazios com 0
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    
+    return df
     
     # --- LIMPEZA DE DADOS (CRUCIAL) ---
     # Garantir que as colunas de dinheiro sejam números (float).
