@@ -12,10 +12,8 @@ st.title("📊 Dashboard de Benefícios (Conectado ao Google Sheets)")
 @st.cache_data
 def load_data():
     # O TRUQUE DO LINK:
-    # Pegamos seu link original e mudamos o final para 'export?format=csv'
-    sheet_url = "https://docs.google.com/spreadsheets/d/1NcP0k_tFK2SN5cJtdqfka-cgFv6tZH1gn1sOS1n2BBw/export?format=csv"
-    
-    df = pd.read_csv(sheet_url)
+  # Novo link formatado para exportação (TENTATIVA 1)
+    sheet_url = "https://docs.google.com/spreadsheets/d/10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ/export?format=csv"
     
     # --- LIMPEZA DE DADOS (CRUCIAL) ---
     # Garantir que as colunas de dinheiro sejam números (float).
