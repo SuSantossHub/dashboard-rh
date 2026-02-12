@@ -1,96 +1,158 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# 1. Configuração da Página (Título da aba do navegador, layout largo)
-st.set_page_config(page_title="Dashboard RH", layout="wide")
+# 1. Configuração da Página
+st.set_page_config(page_title="Dashboard RH GSheets", layout="wide")
+st.title("📊 Dashboard de Benefícios (Conectado ao Google Sheets)")
 
-# 2. Título Principal
-st.title("📊 Dashboard de Benefícios Corporativos")
+# --- FUNÇÃO PARA CARREGAR DADOS (com cache para ficar rápido) ---
+# O @st.cache_data faz com que o Streamlit não recarregue a planilha
+# a cada clique, apenas quando ela muda ou após um tempo.
+@st.cache_data
+def load_data():
+    # O TRUQUE DO LINK:
+    # Pegamos seu link original e mudamos o final para 'export?format=csv'
+    sheet_url = "https://docs.google.com/spreadsheets/d/1NcP0k_tFK2SN5cJtdqfka-cgFv6tZH1gn1sOS1n2BBw/export?format=csv"
+    
+    df = pd.read_csv(sheet_url)
+    
+    # --- LIMPEZA DE DADOS (CRUCIAL) ---
+    # Garantir que as colunas de dinheiro sejam números (float).
+    # O 'errors="coerce"' transforma textos estranhos em "Not a Number" (NaN) para não travar o app.
+    df["Custo Orçado"] = pd.to_numeric(df["Custo Orçado"], errors="coerce").fillna(0)
+    df["Custo Realizado"] = pd.to_numeric(df["Custo Realizado"], errors="coerce").fillna(0)
+    
+    return df
 
-# 3. Carregar os Dados
-# O comando pd.read_csv lê o arquivo que criamos antes.
-# O sep=',' diz que as colunas são separadas por vírgula.
-df = pd.read_csv("dados.csv", sep=',')
+# Carrega os dados chamando a função acima
+try:
+    df = load_data()
+except Exception as e:
+    st.error(f"Erro ao conectar com o Google Sheets. Verifique o link e as permissões. Erro: {e}")
+    st.stop()
+
 
 # --- BARRA LATERAL (FILTROS) ---
-st.sidebar.header("Filtros")
+st.sidebar.header("Filtros Globais")
 
-# Filtro de Unidade
-# df["Unidade"].unique() pega todos os nomes de unidades sem repetir
+# Filtros (usando sorted() para deixar a lista em ordem alfabética)
 unidade_filtro = st.sidebar.multiselect(
     "Filtrar por Unidade:",
-    options=df["Unidade"].unique(),
-    default=df["Unidade"].unique() # Começa com todas selecionadas
+    options=sorted(df["Unidade"].unique()),
+    default=sorted(df["Unidade"].unique())
 )
 
-# Filtro de Tier
 tier_filtro = st.sidebar.multiselect(
     "Filtrar por Tier:",
-    options=df["Tier"].unique(),
-    default=df["Tier"].unique()
+    options=sorted(df["Tier"].unique()),
+    default=sorted(df["Tier"].unique())
 )
 
-# Filtro de Status
 status_filtro = st.sidebar.multiselect(
     "Filtrar por Status:",
-    options=df["Status"].unique(),
-    default=df["Status"].unique()
+    options=sorted(df["Status"].unique()),
+    default=sorted(df["Status"].unique())
 )
 
-# 4. Aplicar os Filtros
-# Aqui dizemos: "O novo dataframe (df_selection) só deve ter linhas onde..."
+# Aplicar os Filtros
 df_selection = df.query(
     "Unidade == @unidade_filtro & Tier == @tier_filtro & Status == @status_filtro"
 )
 
-# --- PAINEL DE KPIS (INDICADORES) ---
-st.markdown("---") # Uma linha divisória visual
-st.subheader("Visão Geral")
-
-# Cálculos
-# nunique() conta quantos IDs únicos existem (número de pessoas)
-total_vidas = df_selection["ID"].nunique() 
-# sum() soma todos os custos
-custo_total = df_selection["Custo"].sum()
-# mean() calcula a média
-custo_medio = df_selection["Custo"].mean()
-
-# Criar 3 colunas para mostrar os números lado a lado
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(label="Total de Vidas Ativas", value=total_vidas)
-
-with col2:
-    # Formatação R$ {:,.2f} deixa bonito com vírgulas e pontos
-    st.metric(label="Custo Total Mensal", value=f"R$ {custo_total:,.2f}")
-
-with col3:
-    st.metric(label="Custo Médio por Benefício", value=f"R$ {custo_medio:,.2f}")
-
+# --- PAINEL DE VISÃO GERAL (ORÇADO VS REALIZADO) ---
 st.markdown("---")
+st.header("Visão Geral Financeira")
 
-# --- ÁREA DE BUSCA DE COLABORADOR ---
-st.subheader("🔍 Localizar Colaborador")
-busca = st.text_input("Digite o Nome, E-mail ou ID do colaborador:")
+# Cálculos Totais
+total_orcado = df_selection["Custo Orçado"].sum()
+total_realizado = df_selection["Custo Realizado"].sum()
+diferenca = total_orcado - total_realizado
 
-if busca:
-    # Se alguém digitou algo na busca...
-    # Filtramos onde o nome OU email contém o texto digitado (case=False ignora maiúsculas/minúsculas)
-    # astype(str) garante que o ID seja lido como texto para busca
-    resultado_busca = df[
-        df["Nome"].str.contains(busca, case=False) | 
-        df["Email"].str.contains(busca, case=False) |
-        df["ID"].astype(str).str.contains(busca)
-    ]
+# Métricas Lado a Lado
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total Orçado", f"R$ {total_orcado:,.2f}")
+with col2:
+    st.metric("Total Realizado", f"R$ {total_realizado:,.2f}")
+with col3:
+    # A métrica "delta" mostra a diferença com cor (verde se positivo, vermelho se negativo)
+    # Aqui, se a diferença é positiva, significa que economizamos (verde).
+    st.metric("Economia (Orçado - Realizado)", f"R$ {diferenca:,.2f}", delta=f"{diferenca:,.2f}")
+
+
+# --- GRÁFICOS DETALHADOS ---
+st.markdown("---")
+col_graf1, col_graf2 = st.columns(2)
+
+# GRÁFICO 1: Comparativo Geral (Barras lado a lado)
+with col_graf1:
+    st.subheader("Comparativo Total: Orçado x Realizado")
     
-    if not resultado_busca.empty:
-        st.success(f"Encontramos {resultado_busca['ID'].nunique()} colaborador(es).")
+    # Precisamos "derreter" (melt) os dados para o formato que o gráfico gosta
+    # Transformamos as duas colunas de custo em linhas.
+    df_melted_total = df_selection.melt(
+        value_vars=["Custo Orçado", "Custo Realizado"], 
+        var_name="Tipo de Custo", 
+        value_name="Valor Total"
+    )
+    # Agrupamos para somar tudo
+    df_grouped_total = df_melted_total.groupby("Tipo de Custo")["Valor Total"].sum().reset_index()
+    
+    # Criando o gráfico
+    fig_total = px.bar(
+        df_grouped_total,
+        x="Tipo de Custo",
+        y="Valor Total",
+        color="Tipo de Custo", # Cores diferentes para cada barra
+        text_auto=".2s", # Mostra o valor em cima da barra (abreviado, ex: 10k)
+        color_discrete_map={"Custo Orçado": "#1f77b4", "Custo Realizado": "#ff7f0e"}, # Cores personalizadas
+        template="plotly_white"
+    )
+    st.plotly_chart(fig_total, use_container_width=True)
+
+
+# GRÁFICO 2: Comparativo por Benefício
+with col_graf2:
+    st.subheader("Orçado x Realizado por Benefício")
+    
+    # Agrupar por benefício e somar os custos
+    df_por_beneficio = df_selection.groupby("Beneficio")[["Custo Orçado", "Custo Realizado"]].sum().reset_index()
+    
+    # "Derreter" novamente para poder comparar lado a lado no gráfico
+    df_melted_beneficio = df_por_beneficio.melt(
+        id_vars=["Beneficio"],
+        value_vars=["Custo Orçado", "Custo Realizado"],
+        var_name="Tipo de Custo",
+        value_name="Valor"
+    )
+
+    # Criando o gráfico de barras agrupadas (barmode='group')
+    fig_beneficio = px.bar(
+        df_melted_beneficio,
+        x="Valor",
+        y="Beneficio",
+        color="Tipo de Custo",
+        barmode="group", # Isso coloca as barras uma do lado da outra, não empilhadas
+        text_auto=".2s",
+        orientation='h', # Barras horizontais ficam melhores para ler os nomes
+        height=400,
+        template="plotly_white"
+    )
+    st.plotly_chart(fig_beneficio, use_container_width=True)
+
+
+# --- ÁREA DE BUSCA E TABELA ---
+st.markdown("---")
+with st.expander("🔍 Busca e Tabela Detalhada (Clique para expandir)"):
+    busca = st.text_input("Buscar colaborador (Nome, E-mail ou ID):")
+    if busca:
+        resultado_busca = df[
+            df["Nome"].str.contains(busca, case=False, na=False) | 
+            df["Email"].str.contains(busca, case=False, na=False) |
+            df["ID"].astype(str).str.contains(busca)
+        ]
         st.dataframe(resultado_busca)
     else:
-        st.warning("Nenhum colaborador encontrado com esses dados.")
-
-# --- TABELA GERAL (Opcional, para ver os dados filtrados) ---
-st.markdown("---")
-with st.expander("Visualizar Base de Dados Completa (Filtrada)"):
-    st.dataframe(df_selection)
+        # Mostra a tabela filtrada pelos filtros laterais se não houver busca
+        st.dataframe(df_selection)
