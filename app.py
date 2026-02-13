@@ -31,7 +31,6 @@ def formatar_moeda(valor):
         return valor
 
 def remover_acentos(texto):
-    # Transforma 'Mês' em 'mes', 'Orçado' em 'orcado'
     try:
         nfkd = unicodedata.normalize('NFKD', str(texto))
         return "".join([c for c in nfkd if not unicodedata.combining(c)]).lower()
@@ -69,7 +68,7 @@ if df is None:
     st.error("Erro fatal ao carregar dados. Verifique a conexão com o Google Sheets.")
     st.stop()
 
-# --- DETECTOR INTELIGENTE DE COLUNAS (BLINDADO) ---
+# --- DETECTOR INTELIGENTE DE COLUNAS ---
 def achar_coluna(df, termos):
     colunas_normalizadas = {col: remover_acentos(col) for col in df.columns}
     for termo in termos:
@@ -128,46 +127,50 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
             if col_realizado: vars_to_plot.append(col_realizado)
             
             if vars_to_plot:
-                # Tenta criar o gráfico dentro de um bloco protegido
                 try:
                     df_melted = df_filtered.groupby(col_mes)[vars_to_plot].sum().reset_index()
                     df_melted = df_melted.melt(id_vars=[col_mes], value_vars=vars_to_plot, var_name="Tipo", value_name="Valor")
                     
-                    # --- TENTATIVA DE ORDENAÇÃO DE MESES ---
-                    try:
-                        mapa_meses = {
-                            'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-                            'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
-                        }
-                        # Pega as 3 primeiras letras, força minusculo e mapeia
-                        df_melted['ordem'] = df_melted[col_mes].astype(str).str.lower().str[:3].map(mapa_meses)
-                        df_melted['ordem'] = df_melted['ordem'].fillna(99) # Se não achar, joga pro fim
-                        df_melted = df_melted.sort_values('ordem')
-                    except:
-                        pass # Se der erro na ordenação, segue a vida sem ordenar
-                    # ---------------------------------------
+                    # --- ORDENAÇÃO DE MESES ---
+                    mapa_meses = {
+                        'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
+                        'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
+                    }
+                    # Cria coluna 'ordem' baseada nas 3 primeiras letras
+                    df_melted['ordem'] = df_melted[col_mes].astype(str).str.lower().str[:3].map(mapa_meses).fillna(99)
+                    df_melted = df_melted.sort_values('ordem')
+                    lista_meses_ordenada = df_melted[col_mes].unique()
+                    # --------------------------
 
+                    # Mapa de cores: Cinza (Orçado) e Vermelho Sangue (Realizado)
                     mapa_cores = {}
                     if col_orcado: mapa_cores[col_orcado] = "#D3D3D3"
                     if col_realizado: mapa_cores[col_realizado] = "#8B0000"
                     
+                    # Voltando para px.bar que suporta 'text_auto' e não dá erro
                     fig_evolucao = px.bar(
-                        df_melted, x=col_mes, y="Valor", color="Tipo",
-                        barmode="group", text_auto='.2s', color_discrete_map=mapa_cores
+                        df_melted, 
+                        x=col_mes, 
+                        y="Valor", 
+                        color="Tipo",
+                        barmode="group", 
+                        text_auto='.2s', 
+                        color_discrete_map=mapa_cores
                     )
                     
+                    # Aplica a ordenação forçada no Eixo X
                     fig_evolucao.update_layout(
                         template="plotly_white", 
                         yaxis_tickprefix="R$ ", 
                         hovermode="x unified", 
                         legend=dict(orientation="h", y=1.1),
-                        xaxis={'categoryorder':'array', 'categoryarray': df_melted[col_mes].unique()}
+                        xaxis={'categoryorder':'array', 'categoryarray': lista_meses_ordenada}
                     )
                     st.plotly_chart(fig_evolucao, use_container_width=True)
                 except Exception as e:
-                    st.error(f"Não foi possível gerar o gráfico de barras: {e}")
+                    st.error(f"Erro ao gerar gráfico de barras: {e}")
             else:
-                st.warning("Sem colunas de valor (Orçado/Realizado) identificadas.")
+                st.warning("Sem dados de Orçado/Realizado.")
         else:
             st.warning("Coluna de Mês não encontrada.")
             
@@ -214,6 +217,7 @@ elif gid_selecionado == "763072509":
         df_pivot = df[cols_limpas].copy()
         cols_numericas = df_pivot.select_dtypes(include=['float64', 'int64']).columns
         
+        # Agora isso vai funcionar pois adicionamos matplotlib no requirements.txt
         styler = df_pivot.style.background_gradient(cmap="Reds", subset=cols_numericas)
         for col in cols_numericas:
             styler = styler.format(formatter="R$ {:,.2f}", subset=col)
@@ -228,7 +232,7 @@ elif gid_selecionado == "763072509":
             mime='text/csv',
         )
     except Exception as e:
-        st.error(f"Erro ao gerar tabela dinâmica: {e}")
+        st.error(f"Erro ao gerar tabela dinâmica (Verifique se matplotlib está no requirements.txt): {e}")
 
 # === CENÁRIO 3: OUTRAS ABAS ===
 else:
