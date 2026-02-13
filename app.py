@@ -65,6 +65,21 @@ if df is None:
     st.error("Erro ao carregar dados. Verifique a conexão com o Google Sheets.")
     st.stop()
 
+# --- DETECTOR INTELIGENTE DE COLUNAS ---
+# Isso resolve o problema de "Benefício" com acento vs "Beneficio" sem acento
+def achar_coluna(df, termos):
+    for col in df.columns:
+        if any(t in col.lower() for t in termos):
+            return col
+    return None
+
+col_orcado = achar_coluna(df, ["orçado", "orcado"])
+col_realizado = achar_coluna(df, ["realizado", "executado"])
+col_beneficio = achar_coluna(df, ["beneficio", "benefício"])
+col_mes = achar_coluna(df, ["mês", "mes", "data"])
+col_unidade = achar_coluna(df, ["unidade", "filial", "local"])
+col_status = achar_coluna(df, ["status", "situação"])
+
 # --- LÓGICA DE EXIBIÇÃO ---
 
 # === CENÁRIO 1: VISÃO 2026 (COM PAINEL DE METAS) ===
@@ -78,10 +93,8 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
     META_ORCAMENTO_MENSAL = 286000.00
     META_ORCAMENTO_ANUAL = 3432000.00
     
-    # Procura coluna de Realizado para somar
-    col_realizado_lista = [c for c in df.columns if "Realizado" in c]
-    if col_realizado_lista:
-        total_realizado_acumulado = df[col_realizado_lista[0]].sum()
+    if col_realizado:
+        total_realizado_acumulado = df[col_realizado].sum()
     else:
         total_realizado_acumulado = 0
     
@@ -99,9 +112,11 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
     st.sidebar.subheader("Filtros 2026")
     df_filtered = df.copy()
     
-    colunas_possiveis = ["Mês", "Unidade", "Beneficio", "Status"]
-    for col in colunas_possiveis:
-        if col in df.columns:
+    # Lista de colunas identificadas para filtrar
+    cols_para_filtro = [col_mes, col_unidade, col_beneficio, col_status]
+    
+    for col in cols_para_filtro:
+        if col: # Se a coluna foi encontrada na planilha
             opcoes = sorted(df[col].astype(str).unique())
             escolha = st.sidebar.multiselect(f"{col}:", options=opcoes, default=opcoes)
             if escolha:
@@ -110,19 +125,14 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
     # --- GRÁFICOS ---
     g1, g2 = st.columns(2)
     
-    # Tenta identificar colunas para os gráficos
-    col_orcado = [c for c in df.columns if "Orçado" in c]
-    col_realizado = [c for c in df.columns if "Realizado" in c]
-    col_mes = [c for c in df.columns if "Mês" in c or "Mes" in c]
-    
     with g1:
         st.subheader("Evolução Mensal")
         if col_orcado and col_realizado and col_mes:
-            df_mes = df_filtered.groupby(col_mes[0])[[col_orcado[0], col_realizado[0]]].sum().reset_index()
+            df_mes = df_filtered.groupby(col_mes)[[col_orcado, col_realizado]].sum().reset_index()
             fig_evolucao = px.bar(
-                df_mes, x=col_mes[0], y=[col_orcado[0], col_realizado[0]],
+                df_mes, x=col_mes, y=[col_orcado, col_realizado],
                 barmode="group", title="Orçado vs Realizado", text_auto=".2s",
-                color_discrete_map={col_orcado[0]: "#1f77b4", col_realizado[0]: "#ff7f0e"}
+                color_discrete_map={col_orcado: "#1f77b4", col_realizado: "#ff7f0e"}
             )
             # Formatação R$ no Eixo Y
             fig_evolucao.update_layout(yaxis_tickprefix="R$ ", hovermode="x unified")
@@ -130,34 +140,42 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
             
     with g2:
         st.subheader("Share por Benefício")
-        if "Beneficio" in df_filtered.columns and col_realizado:
-            df_ben = df_filtered.groupby("Beneficio")[col_realizado[0]].sum().reset_index()
-            fig_pizza = px.pie(df_ben, values=col_realizado[0], names="Beneficio", hole=0.4)
+        # AQUI ESTAVA O PROBLEMA: Agora usamos 'col_beneficio' que acha com ou sem acento
+        if col_beneficio and col_realizado:
+            df_ben = df_filtered.groupby(col_beneficio)[col_realizado].sum().reset_index()
+            # Gráfico de Pizza (Rosca)
+            fig_pizza = px.pie(
+                df_ben, 
+                values=col_realizado, 
+                names=col_beneficio, 
+                hole=0.4
+            )
             st.plotly_chart(fig_pizza, use_container_width=True)
+        else:
+            st.warning("Não foi possível gerar este gráfico. Verifique se as colunas 'Benefício' e 'Realizado' existem.")
 
-    # --- TABELA DE DETALHAMENTO (AQUI A CORREÇÃO DA SINTAXE E MOEDA) ---
+    # --- TABELA DE DETALHAMENTO ---
     st.markdown("---")
     st.subheader("Detalhamento Analítico")
     
-    # Filtra colunas indesejadas (Linha que deu erro antes corrigida)
-    colunas_para_exibir = []
+    # 1. Filtra colunas indesejadas (sem usar lista quebrada)
+    colunas_finais = []
     for c in df_filtered.columns:
         if c not in ["ID", "Unnamed: 0"]:
-            colunas_para_exibir.append(c)
+            colunas_finais.append(c)
     
-    # Cria cópia para exibição
-    df_display = df_filtered[colunas_para_exibir].copy()
+    df_display = df_filtered[colunas_finais].copy()
     
-    # Aplica formatação R$ visualmente
+    # 2. Aplica formatação R$ visualmente
     termos_dinheiro = ["custo", "valor", "total", "orçado", "realizado", "budget"]
     
     for col in df_display.columns:
-        # Se for numérico e tiver nome de dinheiro, formata
+        # Se for numérico e tiver nome de dinheiro
         if pd.api.types.is_numeric_dtype(df_display[col]):
             if any(t in col.lower() for t in termos_dinheiro):
                 df_display[col] = df_display[col].apply(formatar_moeda)
 
-    # Mostra tabela sem índice numérico
+    # 3. Mostra tabela sem índice numérico
     st.dataframe(df_display, hide_index=True, use_container_width=True)
 
 # === CENÁRIO 2: OUTRAS ABAS ===
@@ -165,6 +183,7 @@ else:
     st.header(f"Visualização: {aba_selecionada}")
     
     df_display_geral = df.copy()
+    
     # Tenta formatar dinheiro se achar colunas numéricas
     termos_dinheiro = ["custo", "valor", "total", "orçado", "realizado", "budget"]
     for col in df_display_geral.columns:
