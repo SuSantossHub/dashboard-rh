@@ -90,6 +90,7 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
     c1.metric("Budget Mensal", formatar_moeda(META_ORCAMENTO_MENSAL))
     c2.metric("Budget Anual", formatar_moeda(META_ORCAMENTO_ANUAL))
     c3.metric("Realizado YTD", formatar_moeda(total_realizado_acumulado))
+    # Saldo continua verde se positivo (bom) e vermelho se negativo (ruim), padrão de finanças.
     c4.metric("Saldo Disponível", formatar_moeda(saldo_anual), delta=formatar_moeda(saldo_anual))
 
     st.markdown("---")
@@ -106,15 +107,14 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
             if escolha:
                 df_filtered = df_filtered[df_filtered[col].isin(escolha)]
 
-    # --- GRÁFICOS CLEAN ---
+    # --- GRÁFICOS (AGORA EM VERMELHO) ---
     g1, g2 = st.columns(2)
     
-    # GRÁFICO 1: EVOLUÇÃO MENSAL (CORRIGIDO E CLEAN)
+    # GRÁFICO 1: EVOLUÇÃO MENSAL
     with g1:
         st.subheader("Evolução Mensal")
         
         if col_mes:
-            # Prepara os dados transformando colunas em linhas (melt) para o gráfico entender
             vars_to_plot = []
             if col_orcado: vars_to_plot.append(col_orcado)
             if col_realizado: vars_to_plot.append(col_realizado)
@@ -123,10 +123,10 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
                 df_melted = df_filtered.groupby(col_mes)[vars_to_plot].sum().reset_index()
                 df_melted = df_melted.melt(id_vars=[col_mes], value_vars=vars_to_plot, var_name="Tipo", value_name="Valor")
                 
-                # Mapa de cores CLEAN: Orçado (Cinza Claro), Realizado (Azul Profissional)
+                # Mapa de cores VERMELHO: Orçado (Cinza Claro), Realizado (Vermelho Escuro)
                 mapa_cores = {}
-                if col_orcado: mapa_cores[col_orcado] = "#D3D3D3" # Cinza
-                if col_realizado: mapa_cores[col_realizado] = "#0047AB" # Azul Escuro
+                if col_orcado: mapa_cores[col_orcado] = "#D3D3D3" # Cinza Neutro
+                if col_realizado: mapa_cores[col_realizado] = "#8B0000" # Vermelho Sangue (DarkRed)
                 
                 fig_evolucao = px.bar(
                     df_melted, 
@@ -134,7 +134,7 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
                     y="Valor", 
                     color="Tipo",
                     barmode="group",
-                    text_auto='.2s', # Formato resumido (ex: 10k, 1M)
+                    text_auto='.2s',
                     color_discrete_map=mapa_cores
                 )
                 
@@ -142,7 +142,7 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
                     template="plotly_white",
                     yaxis_tickprefix="R$ ",
                     hovermode="x unified",
-                    legend=dict(orientation="h", y=1.1) # Legenda no topo
+                    legend=dict(orientation="h", y=1.1)
                 )
                 st.plotly_chart(fig_evolucao, use_container_width=True)
             else:
@@ -150,7 +150,7 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
         else:
             st.warning("Coluna de 'Mês' não encontrada.")
             
-    # GRÁFICO 2: SHARE POR BENEFÍCIO (CLEAN - DEGRADÊ AZUL)
+    # GRÁFICO 2: SHARE POR BENEFÍCIO (DEGRADÊ DE VERMELHOS)
     with g2:
         st.subheader("Share por Benefício")
         if col_beneficio and col_realizado:
@@ -162,22 +162,20 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
                 values=col_realizado, 
                 names=col_beneficio, 
                 hole=0.5,
-                # Usa tons de azul do escuro para o claro
-                color_discrete_sequence=px.colors.sequential.Blues_r 
+                # Muda para tons de Vermelho (Reds_r = Reds Reversed)
+                color_discrete_sequence=px.colors.sequential.Reds_r 
             )
             fig_pizza.update_traces(textinfo='percent') 
             fig_pizza.update_layout(template="plotly_white")
             st.plotly_chart(fig_pizza, use_container_width=True)
 
-    # --- TABELA CLEAN (SEM ÍNDICE E FORMATADA) ---
+    # --- TABELA ---
     st.markdown("---")
     st.subheader("Detalhamento Analítico")
     
-    # Filtra colunas indesejadas
     colunas_finais = [c for c in df_filtered.columns if c not in ["ID", "Unnamed: 0"]]
     df_display = df_filtered[colunas_finais].copy()
     
-    # Aplica formatação de moeda visualmente
     termos_dinheiro = ["custo", "valor", "total", "orçado", "realizado", "budget"]
     for col in df_display.columns:
         if pd.api.types.is_numeric_dtype(df_display[col]):
