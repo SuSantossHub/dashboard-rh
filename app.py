@@ -24,7 +24,11 @@ gid_selecionado = DICIONARIO_DE_ABAS[aba_selecionada]
 
 # --- FUNÇÃO DE FORMATAÇÃO DE MOEDA (BRASIL) ---
 def formatar_moeda(valor):
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    # Transforma o número em texto: R$ 1.000,00
+    try:
+        return f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return valor
 
 # --- CARREGAMENTO DE DADOS ---
 @st.cache_data
@@ -35,12 +39,11 @@ def load_data(gid):
     except:
         return None
 
-    # Limpeza e Conversão de Colunas Financeiras
-    # Adicionei "Orçado Mês" e "Realizado Mês" caso existam na planilha
-    termos_financeiros = ["Custo", "Valor", "Total", "Orçado", "Realizado"]
+    # Termos que indicam que uma coluna é dinheiro
+    termos_financeiros = ["Custo", "Valor", "Total", "Orçado", "Realizado", "Budget"]
     
     for col in df.columns:
-        # Se o nome da coluna tem termos financeiros ou o conteúdo tem R$
+        # Se o nome da coluna tem termos financeiros OU o conteúdo tem R$
         eh_financeiro = any(termo in col for termo in termos_financeiros)
         tem_cifrao = df[col].dtype == "object" and df[col].astype(str).str.contains("R\$").any()
         
@@ -69,109 +72,75 @@ if "2026" in aba_selecionada and "Orçamento" in aba_selecionada:
     # --- PAINEL SECUNDÁRIO (METAS FIXAS SOLICITADAS) ---
     st.markdown("### 📌 Indicadores de Meta (Budget)")
     
-    # Valores fixos que você solicitou
     META_ORCAMENTO_MENSAL = 286000.00
     META_ORCAMENTO_ANUAL = 3432000.00
     
-    # Cálculo do Realizado (Soma da coluna Custo Realizado da planilha)
-    total_realizado_acumulado = df["Custo Realizado"].sum() if "Custo Realizado" in df.columns else 0
+    # Soma de tudo que é "Realizado" na planilha (procura colunas com esse nome)
+    coluna_realizado = [c for c in df.columns if "Realizado" in c]
+    if coluna_realizado:
+        total_realizado_acumulado = df[coluna_realizado[0]].sum()
+    else:
+        total_realizado_acumulado = 0
     
-    # Economia (Meta Anual - O que já gastamos)
-    # OBS: Se quiser comparar apenas até o mês atual, a lógica mudaria, 
-    # mas aqui estamos comparando com o Budget Total do ano.
     saldo_anual = META_ORCAMENTO_ANUAL - total_realizado_acumulado
     
     # Layout das Metas
     col_meta1, col_meta2, col_meta3, col_meta4 = st.columns(4)
-    
     with col_meta1:
         st.metric("Budget Mensal (Meta)", formatar_moeda(META_ORCAMENTO_MENSAL))
-        
     with col_meta2:
         st.metric("Budget Anual (Meta)", formatar_moeda(META_ORCAMENTO_ANUAL))
-        
     with col_meta3:
-        # Mostra quanto já foi gasto de verdade segundo a planilha
         st.metric("Realizado Acumulado (YTD)", formatar_moeda(total_realizado_acumulado))
-        
     with col_meta4:
-        # Se for positivo (Verde) = Economia. Se negativo (Vermelho) = Estouro.
-        st.metric(
-            "Saldo / Economia Disponível", 
-            formatar_moeda(saldo_anual), 
-            delta=formatar_moeda(saldo_anual)
-        )
+        st.metric("Saldo Disponível", formatar_moeda(saldo_anual), delta=formatar_moeda(saldo_anual))
 
     st.markdown("---")
 
     # --- FILTROS ---
     st.sidebar.subheader("Filtros 2026")
     df_filtered = df.copy()
-    colunas_filtro = ["Mês", "Unidade", "Beneficio", "Status"]
-    for col in colunas_filtro:
+    
+    # Filtros inteligentes (só mostra o que existe)
+    colunas_possiveis = ["Mês", "Unidade", "Beneficio", "Status"]
+    for col in colunas_possiveis:
         if col in df.columns:
             opcoes = sorted(df[col].astype(str).unique())
             escolha = st.sidebar.multiselect(f"{col}:", options=opcoes, default=opcoes)
             if escolha:
                 df_filtered = df_filtered[df_filtered[col].isin(escolha)]
 
-    # --- GRÁFICOS INTERATIVOS ---
+    # --- GRÁFICOS ---
     c_graf1, c_graf2 = st.columns(2)
     
     with c_graf1:
         st.subheader("Evolução Mensal")
-        if "Mês" in df_filtered.columns and "Custo Realizado" in df_filtered.columns:
-            # Agrupa por mês
-            df_mes = df_filtered.groupby("Mês")[["Custo Orçado", "Custo Realizado"]].sum().reset_index()
-            
-            # Gráfico de Linha/Barra
+        # Tenta achar as colunas certas para o gráfico
+        col_orcado = [c for c in df.columns if "Orçado" in c]
+        col_realizado = [c for c in df.columns if "Realizado" in c]
+        col_mes = [c for c in df.columns if "Mês" in c or "Mes" in c]
+        
+        if col_orcado and col_realizado and col_mes:
+            df_mes = df_filtered.groupby(col_mes[0])[[col_orcado[0], col_realizado[0]]].sum().reset_index()
             fig_evolucao = px.bar(
-                df_mes, x="Mês", y=["Custo Orçado", "Custo Realizado"],
-                barmode="group",
-                title="Orçado vs Realizado por Mês",
-                text_auto=".2s",
-                color_discrete_map={"Custo Orçado": "#1f77b4", "Custo Realizado": "#ff7f0e"} # Azul e Laranja
+                df_mes, x=col_mes[0], y=[col_orcado[0], col_realizado[0]],
+                barmode="group", title="Orçado vs Realizado", text_auto=".2s",
+                color_discrete_map={col_orcado[0]: "#1f77b4", col_realizado[0]: "#ff7f0e"}
             )
-            # Formatação R$ no Eixo Y e no Hover
             fig_evolucao.update_layout(yaxis_tickprefix="R$ ", hovermode="x unified")
             st.plotly_chart(fig_evolucao, use_container_width=True)
             
     with c_graf2:
         st.subheader("Share por Benefício")
-        if "Beneficio" in df_filtered.columns:
-            df_ben = df_filtered.groupby("Beneficio")["Custo Realizado"].sum().reset_index()
-            fig_pizza = px.pie(
-                df_ben, values="Custo Realizado", names="Beneficio", 
-                hole=0.4, # Gráfico de Rosca
-                title="Distribuição de Custos"
-            )
+        if "Beneficio" in df_filtered.columns and col_realizado:
+            df_ben = df_filtered.groupby("Beneficio")[col_realizado[0]].sum().reset_index()
+            fig_pizza = px.pie(df_ben, values=col_realizado[0], names="Beneficio", hole=0.4)
             fig_pizza.update_traces(textinfo='percent+label')
             st.plotly_chart(fig_pizza, use_container_width=True)
 
-    # --- TABELA LIMPA (SEM ÍNDICE NUMÉRICO) ---
+    # --- TABELA DE DETALHAMENTO (AQUI ESTÁ A CORREÇÃO VISUAL) ---
     st.markdown("---")
     st.subheader("Detalhamento Analítico")
     
-    # Selecionar colunas principais para não ficar poluído
-    cols_para_mostrar = [c for c in df_filtered.columns if c not in ["ID", "Unnamed: 0"]]
-    
-    # hide_index=True remove a primeira coluna de numeração (0, 1, 2...)
-    st.dataframe(
-        df_filtered[cols_para_mostrar].style.format(precision=2), # Formata com 2 casas decimais
-        hide_index=True,
-        use_container_width=True
-    )
-
-# === CENÁRIO 2: OUTRAS ABAS (2025, TABELAS DINÂMICAS) ===
-else:
-    st.header(f"Visualização: {aba_selecionada}")
-    
-    # Filtros Genéricos
-    st.sidebar.subheader("Filtros Gerais")
-    df_outros = df.copy()
-    if "Unidade" in df.columns:
-        unidade = st.sidebar.multiselect("Unidade", df["Unidade"].unique())
-        if unidade: df_outros = df_outros[df_outros["Unidade"].isin(unidade)]
-        
-    # Exibição Simples
-    st.dataframe(df_outros, hide_index=True, use_container_width=True)
+    # 1. Seleciona colunas (tira ID e Unnamed)
+    cols_para_mostrar = [c
