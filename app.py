@@ -8,7 +8,7 @@ import os
 st.set_page_config(page_title="Dashboard RH Executivo", layout="wide")
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN (COM IMAGEM DE CAPA)
+# 🔒 SISTEMA DE LOGIN (COM IMAGEM AJUSTADA)
 # ==============================================================================
 def check_password():
     """Retorna True se o usuário tiver a senha correta."""
@@ -33,16 +33,17 @@ def check_password():
     # --- LAYOUT DA TELA DE LOGIN ---
     st.markdown("<br>", unsafe_allow_html=True) # Espaço extra no topo
     
-    # Cria duas colunas: Imagem (Esquerda) e Login (Direita)
-    col_img, col_login = st.columns([1.5, 1])
+    # Ajustei as colunas para ficarem iguais (1 para 1), o que ajuda a centralizar melhor
+    col_img, col_login = st.columns([1, 1])
     
     with col_img:
         # Tenta carregar a imagem se ela existir no GitHub
         if os.path.exists("capa_login.jpg"):
-            st.image("capa_login.jpg", use_container_width=True)
+            # MUDANÇA AQUI: Tirei o use_container_width e coloquei width=600
+            # Se ainda achar grande, diminua esse número (ex: 400 ou 500)
+            st.image("capa_login.jpg", width=600) 
         else:
-            # Fallback se a pessoa esquecer de subir a imagem
-            st.warning("⚠️ Imagem 'capa_login.jpg' não encontrada. Faça o upload no GitHub.")
+            st.warning("⚠️ Imagem 'capa_login.jpg' não encontrada.")
             st.markdown("### 🏢 Dashboard Corporativo")
 
     with col_login:
