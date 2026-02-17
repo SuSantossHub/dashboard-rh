@@ -154,7 +154,7 @@ def check_password():
             st.markdown("""
                 <div class="login-box">
                     <h1>🔒 Acesso Restrito</h1>
-                    <h3>Diretoria RH & Benefits Operations</h3>
+                    <h3>Diretoria & Benefits Operations</h3>
                     <p>Entre com as credenciais corporativas V4 para visualizar os dados sensíveis.</p>
                 </div>
             """, unsafe_allow_html=True)
