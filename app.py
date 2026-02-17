@@ -2,22 +2,23 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import unicodedata
+import os
 
 # 1. Configuração da Página (DEVE SER O PRIMEIRO COMANDO)
 st.set_page_config(page_title="Dashboard RH Executivo", layout="wide")
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN (SENHA DIRETA NO CÓDIGO)
+# 🔒 SISTEMA DE LOGIN (COM IMAGEM DE CAPA)
 # ==============================================================================
 def check_password():
     """Retorna True se o usuário tiver a senha correta."""
 
     def password_entered():
         """Verifica se a senha digitada bate com a definida aqui."""
-        # --- DEFINA AQUI SEU USUÁRIO E SENHA ---
+        # --- CREDENCIAIS ---
         USUARIO_CORRETO = "Benefits Opers"
         SENHA_CORRETA = "BenefitsV4Company"
-        # ---------------------------------------
+        # -------------------
 
         if st.session_state["username"] == USUARIO_CORRETO and \
            st.session_state["password"] == SENHA_CORRETA:
@@ -29,19 +30,34 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # TELA DE LOGIN (COM A LEGENDA SOLICITADA)
-    st.title("🔒 Acesso Restrito - Diretoria RH")
-    st.markdown("Entre com as credenciais corporativas para visualizar os dados sensíveis.")
+    # --- LAYOUT DA TELA DE LOGIN ---
+    st.markdown("<br>", unsafe_allow_html=True) # Espaço extra no topo
     
-    col1, col2 = st.columns([1, 2])
-    with col1:
+    # Cria duas colunas: Imagem (Esquerda) e Login (Direita)
+    col_img, col_login = st.columns([1.5, 1])
+    
+    with col_img:
+        # Tenta carregar a imagem se ela existir no GitHub
+        if os.path.exists("capa_login.jpg"):
+            st.image("capa_login.jpg", use_container_width=True)
+        else:
+            # Fallback se a pessoa esquecer de subir a imagem
+            st.warning("⚠️ Imagem 'capa_login.jpg' não encontrada. Faça o upload no GitHub.")
+            st.markdown("### 🏢 Dashboard Corporativo")
+
+    with col_login:
+        st.markdown("### 🔒 Acesso Restrito")
+        st.markdown("**Diretoria RH & Benefits Operations**")
+        st.caption("Entre com as credenciais corporativas V4 para visualizar os dados sensíveis.")
+        
         st.text_input("Usuário", key="username")
         st.text_input("Senha", type="password", key="password")
-        st.button("Entrar", on_click=password_entered)
+        
+        st.button("Entrar no Painel", on_click=password_entered, type="primary")
 
-    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-        st.error("😕 Usuário ou senha incorretos.")
-
+        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+            st.error("🚫 Acesso negado. Verifique suas credenciais.")
+            
     return False
 
 # 🛑 BLOQUEIO: Se não logar, o código para aqui.
@@ -55,7 +71,7 @@ if not check_password():
 st.title("📊 Dashboard de Benefícios Corporativos")
 
 # --- BARRA LATERAL (LOGOUT) ---
-st.sidebar.success(f"Logado como: **{st.session_state['username']}**")
+st.sidebar.success(f"👤 Logado: **{st.session_state['username']}**")
 if st.sidebar.button("Sair / Logout"):
     st.session_state["password_correct"] = False
     st.rerun()
