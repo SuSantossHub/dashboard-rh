@@ -7,24 +7,31 @@ import unicodedata
 st.set_page_config(page_title="Dashboard RH Executivo", layout="wide")
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN (SEGURANÇA)
+# 🔒 SISTEMA DE LOGIN (SENHA DIRETA NO CÓDIGO)
 # ==============================================================================
 def check_password():
     """Retorna True se o usuário tiver a senha correta."""
 
     def password_entered():
-        """Verifica se a senha digitada bate com a senha do cofre (secrets)."""
-        if st.session_state["username"] in st.secrets["passwords"] and \
-           st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
+        """Verifica se a senha digitada bate com a definida aqui."""
+        # --- DEFINA AQUI SEU USUÁRIO E SENHA ---
+        USUARIO_CORRETO = "Benefits Opers"
+        SENHA_CORRETA = "BenefitsV4Company"
+        # ---------------------------------------
+
+        if st.session_state["username"] == USUARIO_CORRETO and \
+           st.session_state["password"] == SENHA_CORRETA:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Não armazena a senha na memória
+            del st.session_state["password"]  # Limpa senha da memória
         else:
             st.session_state["password_correct"] = False
 
     if st.session_state.get("password_correct", False):
         return True
 
-    st.title("🔒 Acesso Restrito - Diretoria RH")
+    # TELA DE LOGIN
+    st.title("🔒 Acesso Restrito")
+    st.markdown("Entre com as credenciais corporativas.")
     
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -86,7 +93,7 @@ def remover_acentos(texto):
     except:
         return str(texto).lower()
 
-# MAPA DE MESES PARA ORDENAÇÃO (CORRIGIDO O ERRO DE SINTAXE)
+# MAPA DE MESES PARA ORDENAÇÃO
 MAPA_MESES = {
     'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
     'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
