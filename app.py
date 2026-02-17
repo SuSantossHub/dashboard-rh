@@ -78,10 +78,10 @@ def check_password():
     # --- CONFIGURAÇÃO DO VISUAL DA TELA DE LOGIN ---
     
     # 1. Aplica a imagem de fundo se ela existir
-    if os.path.exists("capa_login.jpg"):
-        set_png_as_page_bg("capa_login.jpg")
+    if os.path.exists("capa_login.jpg.jpg"):
+        set_png_as_page_bg("capa_login.jpg.jpg")
     else:
-        st.warning("⚠️ Imagem 'capa_login.jpg' não encontrada no GitHub.")
+        st.warning("⚠️ Imagem 'capa_login.jpg.jpg' não encontrada no GitHub.")
 
     # 2. Cria colunas para centralizar o formulário na tela
     # Usamos [1, 2, 1] para criar um espaço vazio na esquerda, o formulário no meio, e espaço na direita
