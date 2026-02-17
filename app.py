@@ -22,29 +22,25 @@ def set_png_as_page_bg(png_file):
     bin_str = get_base64_of_bin_file(png_file)
     page_bg_img = '''
     <style>
-    /* Isso atinge o container principal do Streamlit */
     [data-testid="stAppViewContainer"] {
     background-image: url("data:image/jpg;base64,%s");
-    background-size: cover; /* Faz a imagem cobrir tudo sem distorcer */
-    background-position: center center; /* Centraliza a imagem */
-    background-repeat: no-repeat; /* Não repete a imagem */
-    background-attachment: fixed; /* A imagem fica fixa ao rolar */
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     }
     
-    /* Opcional: Deixa o fundo da barra lateral semi-transparente para combinar */
     [data-testid="stSidebar"] {
         background-color: rgba(255, 255, 255, 0.8);
     }
     
-    /* Estilo para caixa de login ficar legível */
     .login-box {
-        background-color: rgba(0, 0, 0, 0.7); /* Fundo preto semi-transparente */
+        background-color: rgba(0, 0, 0, 0.7);
         padding: 30px;
         border-radius: 15px;
-        color: white; /* Texto branco */
+        color: white;
         text-align: center;
     }
-    /* Força a cor branca nos títulos dentro da caixa */
     .login-box h1, .login-box h3, .login-box p, .login-box label {
          color: white !important;
     }
@@ -68,7 +64,9 @@ def check_password():
         if st.session_state["username"] == USUARIO_CORRETO and \
            st.session_state["password"] == SENHA_CORRETA:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Limpa senha da memória
+            # SALVA O USUÁRIO NA MEMÓRIA PERMANENTE (Correção do Erro KeyError)
+            st.session_state["usuario_logado"] = st.session_state["username"]
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
@@ -77,23 +75,21 @@ def check_password():
 
     # --- CONFIGURAÇÃO DO VISUAL DA TELA DE LOGIN ---
     
-    # 1. Aplica a imagem de fundo se ela existir
+    # 1. Aplica a imagem de fundo (NOME AJUSTADO PARA .jpg.jpg)
     if os.path.exists("capa_login.jpg.jpg"):
         set_png_as_page_bg("capa_login.jpg.jpg")
+    elif os.path.exists("capa_login.jpg"):
+        set_png_as_page_bg("capa_login.jpg")
     else:
         st.warning("⚠️ Imagem 'capa_login.jpg.jpg' não encontrada no GitHub.")
 
-    # 2. Cria colunas para centralizar o formulário na tela
-    # Usamos [1, 2, 1] para criar um espaço vazio na esquerda, o formulário no meio, e espaço na direita
+    # 2. Cria colunas para centralizar o formulário
     col_esq, col_centro, col_dir = st.columns([1, 2, 1])
 
     with col_centro:
-        st.markdown("<br><br>", unsafe_allow_html=True) # Empurra um pouco para baixo
+        st.markdown("<br><br>", unsafe_allow_html=True)
         
-        # Abre um container para agrupar os elementos do login
         with st.container():
-            # Injeta um HTML para criar uma "caixa" escura semi-transparente
-            # Isso garante que o texto fique legível sobre qualquer foto
             st.markdown("""
                 <div class="login-box">
                     <h1>🔒 Acesso Restrito</h1>
@@ -102,7 +98,6 @@ def check_password():
                 </div>
             """, unsafe_allow_html=True)
 
-            # Inputs do Streamlit (ficam abaixo do texto, mas dentro da mesma área visual)
             st.text_input("Usuário", key="username")
             st.text_input("Senha", type="password", key="password")
             
@@ -123,12 +118,14 @@ if not check_password():
 # ==============================================================================
 # 🚀 ÁREA LOGADA: DASHBOARD COMPLETO
 # ==============================================================================
-# (O CSS do fundo não se aplica aqui porque a função check_password já terminou)
 
 st.title("📊 Dashboard de Benefícios Corporativos")
 
 # --- BARRA LATERAL (LOGOUT) ---
-st.sidebar.success(f"👤 Logado: **{st.session_state['username']}**")
+# Usa a variável permanente "usuario_logado" em vez de "username"
+usuario_atual = st.session_state.get("usuario_logado", "Usuário")
+st.sidebar.success(f"👤 Logado: **{usuario_atual}**")
+
 if st.sidebar.button("Sair / Logout"):
     st.session_state["password_correct"] = False
     st.rerun()
@@ -295,3 +292,117 @@ elif "Orçamento" in aba_selecionada:
             meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
             sel_m = st.sidebar.multiselect("Mês:", meses, default=meses)
             if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
+            
+        if col_ben:
+            bens = sorted(df[col_ben].astype(str).unique())
+            sel_b = st.sidebar.multiselect("Benefício:", bens, default=bens)
+            if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
+
+        # KPIs
+        realizado = df_filt[col_real].sum() if col_real else 0
+        BUDGET_ANUAL = 3432000.00
+        saldo = BUDGET_ANUAL - realizado
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Budget Mensal", "R$ 286.000,00")
+        c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
+        c3.metric("Realizado YTD", formatar_moeda(realizado))
+        c4.metric("Saldo Anual", formatar_moeda(saldo), delta=formatar_moeda(saldo))
+        
+        st.markdown("---")
+        
+        # Gráficos
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("Evolução Mensal")
+            if col_mes and col_real:
+                vars_p = []
+                if col_orc: vars_p.append(col_orc)
+                vars_p.append(col_real)
+                
+                df_c = df_filt.groupby(col_mes)[vars_p].sum().reset_index()
+                df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
+                df_c = df_c.sort_values('ordem')
+                
+                df_m = df_c.melt(id_vars=[col_mes], value_vars=vars_p, var_name="Tipo", value_name="Valor")
+                cores = {col_real: '#8B0000'}
+                if col_orc: cores[col_orc] = '#D3D3D3'
+                
+                fig = px.bar(df_m, x=col_mes, y="Valor", color="Tipo", barmode="group", 
+                             text_auto='.2s', color_discrete_map=cores)
+                fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ",
+                                  xaxis={'categoryorder':'array', 'categoryarray': df_c[col_mes].unique()})
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with g2:
+            st.subheader("Share por Benefício")
+            if col_ben and col_real:
+                df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
+                df_p = df_p.sort_values(col_real, ascending=False)
+                fig_p = px.pie(df_p, values=col_real, names=col_ben, hole=0.5,
+                               color_discrete_sequence=px.colors.sequential.Reds_r)
+                fig_p.update_traces(textposition='inside', textinfo='percent+label', textfont=dict(color='black'))
+                fig_p.update_layout(showlegend=False)
+                st.plotly_chart(fig_p, use_container_width=True)
+
+        # Matriz
+        st.markdown("---")
+        st.subheader("📑 Visão Matricial")
+        if col_ben and col_mes and col_real:
+            try:
+                piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
+                piv = piv[sorted(piv.columns, key=get_mes_ordem)]
+                piv["Total Anual"] = piv.sum(axis=1)
+                piv = piv.sort_values("Total Anual", ascending=False)
+                
+                lin_tot = piv.sum()
+                lin_tot.name = "TOTAL GERAL"
+                piv = pd.concat([piv, lin_tot.to_frame().T])
+                
+                sty = piv.style.format("R$ {:,.2f}")
+                cols = [c for c in piv.columns if c != "Total Anual"]
+                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
+                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
+                
+                def dest_total(s):
+                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
+                sty = sty.apply(dest_total, axis=1)
+                
+                st.dataframe(sty, use_container_width=True)
+            except: pass
+
+# ==============================================================================
+# VISÃO: DASHBOARD TRIMESTRAL
+# ==============================================================================
+elif "Dashboard" in aba_selecionada:
+    st.header("📊 Dashboard Executivo e Trimestral")
+    df = load_data(GID_DASH_2025)
+    if df is None: df = load_data(GID_2025)
+
+    if df is not None:
+        col_real = achar_coluna(df, ["realizado", "executado", "soma"])
+        col_mes = achar_coluna(df, ["mês", "mes", "data"])
+        col_ben = achar_coluna(df, ["beneficio", "benefício"])
+
+        if col_mes and col_real:
+            df['Trimestre'] = df[col_mes].apply(get_trimestre)
+            tris = sorted(df['Trimestre'].unique())
+            sel_t = st.sidebar.multiselect("Trimestre:", tris)
+            df_d = df[df['Trimestre'].isin(sel_t)] if sel_t else df.copy()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Custo por Trimestre")
+                df_t = df_d.groupby('Trimestre')[col_real].sum().reset_index()
+                fig = px.bar(df_t, x='Trimestre', y=col_real, text_auto='.2s', color_discrete_sequence=['#8B0000'])
+                fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ")
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                st.subheader("Total por Benefício")
+                if col_ben:
+                    df_b = df_d.groupby(col_ben)[col_real].sum().reset_index()
+                    df_b = df_b.sort_values(col_real, ascending=False)
+                    fig = px.bar(df_b, x=col_ben, y=col_real, text_auto='.2s', color=col_real, color_continuous_scale="Reds")
+                    fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ")
+                    st.plotly_chart(fig, use_container_width=True)
