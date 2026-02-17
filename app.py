@@ -5,8 +5,15 @@ import unicodedata
 import os
 import base64
 
-# 1. Configuração da Página (DEVE SER O PRIMEIRO COMANDO)
-st.set_page_config(page_title="Dashboard RH Executivo", layout="wide")
+# ==============================================================================
+# 1. Configuração da Página (DEVE SER O PRIMEIRO COMANDO DO STREAMLIT)
+# ==============================================================================
+# AQUI ESTÁ A MUDANÇA: Adicionei o 'page_icon="favicon.png"'
+st.set_page_config(
+    page_title="Dashboard RH Executivo",
+    layout="wide",
+    page_icon="favicon.png" 
+)
 
 # ==============================================================================
 # FUNÇÕES AUXILIARES PARA O BACKGROUND
@@ -19,34 +26,39 @@ def get_base64_of_bin_file(bin_file):
 
 def set_png_as_page_bg(png_file):
     """Injeta CSS para definir a imagem de fundo da página inteira."""
-    bin_str = get_base64_of_bin_file(png_file)
-    page_bg_img = '''
-    <style>
-    [data-testid="stAppViewContainer"] {
-    background-image: url("data:image/jpg;base64,%s");
-    background-size: cover;
-    background-position: center center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    }
-    
-    [data-testid="stSidebar"] {
-        background-color: rgba(255, 255, 255, 0.8);
-    }
-    
-    .login-box {
-        background-color: rgba(0, 0, 0, 0.7);
-        padding: 30px;
-        border-radius: 15px;
-        color: white;
-        text-align: center;
-    }
-    .login-box h1, .login-box h3, .login-box p, .login-box label {
-         color: white !important;
-    }
-    </style>
-    ''' % bin_str
-    st.markdown(page_bg_img, unsafe_allow_html=True)
+    # Tenta ler o arquivo. Se der erro (ex: arquivo corrompido ou não existe), segue a vida sem fundo.
+    try:
+        bin_str = get_base64_of_bin_file(png_file)
+        page_bg_img = '''
+        <style>
+        [data-testid="stAppViewContainer"] {
+        background-image: url("data:image/jpg;base64,%s");
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        }
+        
+        [data-testid="stSidebar"] {
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .login-box {
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 30px;
+            border-radius: 15px;
+            color: white;
+            text-align: center;
+        }
+        .login-box h1, .login-box h3, .login-box p, .login-box label {
+             color: white !important;
+        }
+        </style>
+        ''' % bin_str
+        st.markdown(page_bg_img, unsafe_allow_html=True)
+    except FileNotFoundError:
+        # Se o arquivo não for encontrado no momento da leitura, apenas ignora o background
+        pass
 
 # ==============================================================================
 # 🔒 SISTEMA DE LOGIN (COM BACKGROUND TELA CHEIA)
@@ -75,13 +87,12 @@ def check_password():
 
     # --- CONFIGURAÇÃO DO VISUAL DA TELA DE LOGIN ---
     
-    # 1. Aplica a imagem de fundo (NOME AJUSTADO PARA .jpg.jpg)
+    # 1. Aplica a imagem de fundo (Procura pelas duas versões do nome)
     if os.path.exists("capa_login.jpg.jpg"):
         set_png_as_page_bg("capa_login.jpg.jpg")
     elif os.path.exists("capa_login.jpg"):
         set_png_as_page_bg("capa_login.jpg")
-    else:
-        st.warning("⚠️ Imagem 'capa_login.jpg.jpg' não encontrada no GitHub.")
+    # Se não achar nenhuma, não faz nada e a tela fica preta (padrão)
 
     # 2. Cria colunas para centralizar o formulário
     col_esq, col_centro, col_dir = st.columns([1, 2, 1])
@@ -93,7 +104,7 @@ def check_password():
             st.markdown("""
                 <div class="login-box">
                     <h1>🔒 Acesso Restrito</h1>
-                    <h3>Diretoria & Benefits Operations</h3>
+                    <h3>Diretoria RH & Benefits Operations</h3>
                     <p>Entre com as credenciais corporativas V4 para visualizar os dados sensíveis.</p>
                 </div>
             """, unsafe_allow_html=True)
