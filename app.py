@@ -47,7 +47,7 @@ def check_password():
 
     with col_login:
         st.markdown("### 🔒 Acesso Restrito")
-        st.markdown("**Diretoria RH & Benefits Operations**")
+        st.markdown("**Diretoria & Benefits Operations**")
         st.caption("Entre com as credenciais corporativas V4 para visualizar os dados sensíveis.")
         
         st.text_input("Usuário", key="username")
