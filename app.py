@@ -29,9 +29,9 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # TELA DE LOGIN
-    st.title("🔒 Acesso Restrito")
-    st.markdown("Entre com as credenciais corporativas.")
+    # TELA DE LOGIN (COM A LEGENDA SOLICITADA)
+    st.title("🔒 Acesso Restrito - Diretoria RH")
+    st.markdown("Entre com as credenciais corporativas para visualizar os dados sensíveis.")
     
     col1, col2 = st.columns([1, 2])
     with col1:
