@@ -217,7 +217,7 @@ if st.sidebar.button("Sair / Logout", use_container_width=True):
 # LÓGICA DAS VISUALIZAÇÕES
 # ------------------------------------------------------------------------------
 
-# === PÁGINA INICIAL (HOME EXECUTIVA) ===
+# === PÁGINA INICIAL (HOME EXECUTIVA ATUALIZADA) ===
 if aba_selecionada == "Início":
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -226,21 +226,22 @@ if aba_selecionada == "Início":
         logo_b64 = get_base64_of_bin_file("favicon.png")
         logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 40px;">'
 
-    # NOVO CABEÇALHO (Logo primeiro, depois o título)
+    # NOVO CABEÇALHO (Benefits Platform)
     st.markdown(f"""
         <div style="border-left: 5px solid #ff4b4b; padding-left: 15px; margin-bottom: 30px;">
             <h1 class="home-title">
-                {logo_html} Benefits Intelligence
+                {logo_html} Benefits Platform
             </h1>
             <h3 style="color: #4b4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 5px;">
-                Bem-vindos ao V4 Benefits Intelligence.
+                Bem-vindos ao V4 Benefits Intelligence Platform.
             </h3>
             <p style="color: gray; font-size: 16px; max-width: 900px;">
-Bem-vindos ao V4 Benefits Intelligence.
-Plataforma estratégica para gestão e inteligência dos benefícios V4, reunindo orçamento, comparativos anuais e indicadores de performance em um único ambiente.
-
-Escolha a opção desejada para avançar.        
- 
+                Plataforma estratégica para gestão e inteligência dos benefícios V4, reunindo orçamento, comparativos anuais e indicadores de performance em um único ambiente.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("Escolha a opção desejada para avançar.")
 
 
 # === ANÁLISE FINANCEIRA ===
