@@ -221,11 +221,10 @@ if "Comparativo" in aba_selecionada:
         col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
         col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
 
-        # === BARRA LATERAL: FILTRO DE MÊS (OBRIGATÓRIO) ===
+        # === BARRA LATERAL: FILTRO DE MÊS ===
         st.sidebar.markdown("### 📅 Período de Análise")
         mes_selecionado = st.sidebar.selectbox("Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
         
-        # Converte nome do mês (Ex: Janeiro) para número (Ex: 1)
         ordem_mes_selecionado = get_mes_ordem(mes_selecionado)
         
         # Filtra os Dataframes pelo mês
@@ -240,7 +239,6 @@ if "Comparativo" in aba_selecionada:
         
         sel_ben = st.sidebar.multiselect("Filtrar Benefícios (Opcional):", todos_bens)
 
-        # Filtra por benefício se houver seleção
         if sel_ben:
             df_25_final = df_25_m[df_25_m[col_ben_25].isin(sel_ben)]
             df_26_final = df_26_m[df_26_m[col_ben_26].isin(sel_ben)]
@@ -262,15 +260,11 @@ if "Comparativo" in aba_selecionada:
         k1.metric("Realizado 2025", formatar_moeda(total_25))
         k2.metric("Realizado 2026", formatar_moeda(total_26))
         
-        # Lógica de cor para o KPI: Se gastou menos (negativo), é verde (bom). Se gastou mais, vermelho.
-        cor_delta = "normal" if delta > 0 else "off" 
         k3.metric("Diferença (R$)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
 
         st.markdown("---")
         
-        # === GRÁFICO ESTILO "COMPRA DE LIVROS" (BARRAS AGRUPADAS) ===
-        # Preparando os dados para o gráfico
-        # Agrupa por Benefício
+        # === GRÁFICO BARRAS AGRUPADAS ===
         view_25 = df_25_final.groupby(col_ben_25)[col_real].sum().reset_index()
         view_25.columns = ['Benefício', 'Valor']
         view_25['Ano'] = '2025'
@@ -279,27 +273,23 @@ if "Comparativo" in aba_selecionada:
         view_26.columns = ['Benefício', 'Valor']
         view_26['Ano'] = '2026'
         
-        # Junta tudo
         df_chart = pd.concat([view_25, view_26])
         
-        # Se tiver muitos dados e nenhum filtro, pega só os top 10 para o gráfico não quebrar
         if not sel_ben and len(df_chart['Benefício'].unique()) > 10:
             top_bens = df_chart.groupby('Benefício')['Valor'].sum().nlargest(10).index
             df_chart = df_chart[df_chart['Benefício'].isin(top_bens)]
             st.caption("ℹ️ Mostrando os top 10 benefícios por valor. Use o filtro lateral para ver outros.")
 
-        # Ordena por valor para ficar bonito
         df_chart = df_chart.sort_values('Valor', ascending=False)
 
-        # Plot
         fig = px.bar(
             df_chart, 
             x="Benefício", 
             y="Valor", 
             color="Ano", 
-            barmode="group", # Isso faz as barras ficarem lado a lado
+            barmode="group", 
             text_auto='.2s',
-            color_discrete_map={'2025': '#999999', '2026': '#CC0000'}, # Cinza e Vermelho
+            color_discrete_map={'2025': '#999999', '2026': '#CC0000'},
             height=500
         )
         
@@ -311,11 +301,10 @@ if "Comparativo" in aba_selecionada:
             legend_title="Ano",
             title=titulo_grafico
         )
-        
         st.plotly_chart(fig, use_container_width=True)
 
 
-# === ORÇAMENTO x REALIZADO (COM BARRA DE PROGRESSO) ===
+# === ORÇAMENTO x REALIZADO ===
 elif "Orçamento" in aba_selecionada:
     gid_atual = GID_2026 if "2026" in aba_selecionada else GID_2025
     df = load_data(gid_atual)
@@ -388,3 +377,20 @@ elif "Orçamento" in aba_selecionada:
         st.markdown("---")
         st.subheader("📑 Visão Matricial Detalhada")
         if col_ben and col_mes and col_real:
+            try:
+                piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
+                piv = piv[sorted(piv.columns, key=get_mes_ordem)]
+                piv["Total Anual"] = piv.sum(axis=1)
+                piv = piv.sort_values("Total Anual", ascending=False)
+                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
+                piv = pd.concat([piv, lin_tot.to_frame().T])
+                sty = piv.style.format("R$ {:,.2f}")
+                cols = [c for c in piv.columns if c != "Total Anual"]
+                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
+                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
+                def dest_total(s):
+                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
+                sty = sty.apply(dest_total, axis=1)
+                st.dataframe(sty, use_container_width=True)
+            except:
+                pass
