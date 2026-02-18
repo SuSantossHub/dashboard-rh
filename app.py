@@ -6,12 +6,13 @@ import os
 import base64
 
 # ==============================================================================
-# 1. Configuração da Página (DEVE SER O PRIMEIRO COMANDO)
+# 1. Configuração da Página (OTIMIZADO)
 # ==============================================================================
 st.set_page_config(
-    page_title="Dashboard RH Executivo",
+    page_title="Dashboard de Benefícios | V4 Company", 
     layout="wide",
-    page_icon="favicon.png"
+    page_icon="favicon.png", # Mantém o ícone na aba do navegador (profissional)
+    initial_sidebar_state="expanded"
 )
 
 # ==============================================================================
@@ -41,7 +42,7 @@ def set_png_as_page_bg(png_file):
         }
         /* Estilo da Caixa de Login */
         .login-box {
-            background-color: rgba(0, 0, 0, 0.85); /* Fundo escuro */
+            background-color: rgba(0, 0, 0, 0.85);
             padding: 40px;
             border-radius: 15px;
             color: white;
@@ -49,9 +50,13 @@ def set_png_as_page_bg(png_file):
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             border: 1px solid rgba(255,255,255,0.1);
         }
-        .login-box h1 { font-size: 26px; color: white !important; margin-bottom: 5px; }
-        .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 400; }
+        .login-box h1 { font-size: 26px; color: white !important; margin-bottom: 10px; }
+        .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
+        
+        /* Esconde botão de deploy e menu hamburguer para diretoria se necessário */
+        /* #MainMenu {visibility: hidden;} */
+        /* footer {visibility: hidden;} */
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -120,14 +125,24 @@ def load_data(gid):
     return df
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN (COM LOGO)
+# 🔒 SISTEMA DE LOGIN (MULTI-USUÁRIO)
 # ==============================================================================
 def check_password():
+    # Definição dos Usuários e Senhas
+    CREDENCIAIS = {
+        "Admin Opers": "BenefitsV4Company",  # Acesso Total
+        "diretoria": "V4Diretoria2026"       # Acesso Visualização
+    }
+
     def password_entered():
-        if st.session_state["username"] == "Benefits Opers" and \
-           st.session_state["password"] == "BenefitsV4Company":
+        user = st.session_state.get("username", "")
+        pwd = st.session_state.get("password", "")
+
+        if user in CREDENCIAIS and pwd == CREDENCIAIS[user]:
             st.session_state["password_correct"] = True
-            st.session_state["usuario_logado"] = st.session_state["username"]
+            st.session_state["usuario_logado"] = user
+            # Define o perfil (Role)
+            st.session_state["role"] = "admin" if user == "Admin Opers" else "viewer"
             del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
@@ -141,24 +156,15 @@ def check_password():
     elif os.path.exists("capa_login.jpg"):
         set_png_as_page_bg("capa_login.jpg")
 
-    # 2. Prepara Logo para o HTML
-    logo_html = ""
-    if os.path.exists("favicon.png"):
-        logo_b64 = get_base64_of_bin_file("favicon.png")
-        # Ajuste o width abaixo se quiser o logo maior ou menor
-        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="width: 80px; margin-bottom: 20px;">'
-
-    # 3. Layout Centralizado
+    # 2. Layout Centralizado (SEM LOGO, APENAS TEXTO ATUALIZADO)
     col_esq, col_centro, col_dir = st.columns([1, 2, 1])
     with col_centro:
         st.markdown("<br><br>", unsafe_allow_html=True)
         with st.container():
-            # Aqui injetamos o logo e o texto ajustado
-            st.markdown(f"""
+            st.markdown("""
                 <div class="login-box">
-                    {logo_html}
-                    <h1>Acesso Restrito</h1>
-                    <h3>Diretoria RH & Benefits Operations</h3>
+                    <h1>🔒 Acesso Restrito</h1>
+                    <h3>Diretoria & Benefits Operations</h3>
                     <p>Entre com as credenciais corporativas V4.</p>
                 </div>
             """, unsafe_allow_html=True)
@@ -170,7 +176,7 @@ def check_password():
             st.button("Entrar no Painel", on_click=password_entered, type="primary", use_container_width=True)
 
             if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-                st.error("🚫 Acesso negado.")
+                st.error("🚫 Usuário ou senha incorretos.")
         st.markdown("<br><br>", unsafe_allow_html=True)
             
     return False
@@ -182,9 +188,16 @@ if not check_password():
 # 🚀 ÁREA LOGADA
 # ==============================================================================
 
-usuario_atual = st.session_state.get("usuario_logado", "Admin")
+usuario_atual = st.session_state.get("usuario_logado", "Visitante")
+role = st.session_state.get("role", "viewer")
 
-st.sidebar.success(f"👤 Logado: **{usuario_atual}**")
+# Barra Lateral Personalizada
+st.sidebar.success(f"👤 **{usuario_atual}**")
+
+# Se for admin, mostra opção de ajuste (simulado aqui como visualização crua)
+if role == "admin":
+    st.sidebar.caption("🔧 Modo Admin Ativo")
+
 if st.sidebar.button("Sair / Logout"):
     st.session_state["password_correct"] = False
     st.rerun()
@@ -206,7 +219,7 @@ st.sidebar.header("Navegação")
 aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
 
 # ------------------------------------------------------------------------------
-# LÓGICA DAS ABAS
+# LÓGICA DAS VISUALIZAÇÕES
 # ------------------------------------------------------------------------------
 
 if "Trimestral" in aba_selecionada:
@@ -222,8 +235,21 @@ if "Trimestral" in aba_selecionada:
         if col_mes and col_real:
             df['Trimestre'] = df[col_mes].apply(get_trimestre)
             tris = sorted(df['Trimestre'].unique())
+            
+            # Filtros bem visíveis para Diretoria
+            st.sidebar.markdown("### 🔍 Filtros Inteligentes")
             sel_t = st.sidebar.multiselect("Filtrar Trimestre:", tris)
+            
             df_d = df[df['Trimestre'].isin(sel_t)] if sel_t else df.copy()
+
+            # KPIs de Cabeçalho (Para visualização rápida da Diretoria)
+            total_periodo = df_d[col_real].sum()
+            k1, k2 = st.columns(2)
+            k1.metric("Total Selecionado", formatar_moeda(total_periodo))
+            if sel_t:
+                k2.info(f"Visualizando: {', '.join(sel_t)}")
+
+            st.markdown("---")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -236,14 +262,14 @@ if "Trimestral" in aba_selecionada:
                     st.plotly_chart(fig1, use_container_width=True)
 
             with c2:
-                st.subheader("Custo por Trimestre")
+                st.subheader("Share por Trimestre")
                 df_tri = df_d.groupby('Trimestre')[col_real].sum().reset_index()
-                fig2 = px.pie(df_tri, values=col_real, names='Trimestre', hole=0.5, color_discrete_sequence=px.colors.sequential.RdBu)
+                fig2 = px.pie(df_tri, values=col_real, names='Trimestre', hole=0.6, color_discrete_sequence=px.colors.sequential.RdBu)
                 fig2.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig2, use_container_width=True)
 
             st.markdown("---")
-            st.subheader("Evolução Mensal Detalhada")
+            st.subheader("Evolução Detalhada (Mensal)")
             if col_ben:
                 df_evo = df_d.groupby([col_mes, col_ben])[col_real].sum().reset_index()
                 df_evo['ordem'] = df_evo[col_mes].apply(get_mes_ordem)
@@ -252,7 +278,10 @@ if "Trimestral" in aba_selecionada:
                 fig3.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis={'categoryorder':'array', 'categoryarray': df_evo[col_mes].unique()})
                 st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.warning("Colunas 'Mês' ou 'Realizado' não encontradas. Verifique a planilha.")
+            if role == "admin":
+                st.error("Admin: Colunas 'Mês' ou 'Realizado' não encontradas. Verifique a planilha.")
+            else:
+                st.warning("Dados indisponíveis no momento.")
 
 elif "Comparativo" in aba_selecionada:
     st.header("⚖️ Comparativo Anual: 2025 vs 2026")
@@ -270,10 +299,12 @@ elif "Comparativo" in aba_selecionada:
         delta = total_26 - total_25
         delta_perc = (delta / total_25 * 100) if total_25 > 0 else 0
 
+        # KPIs Grandes para a Diretoria
+        st.markdown("### Resumo Executivo")
         k1, k2, k3 = st.columns(3)
         k1.metric("Total 2025", formatar_moeda(total_25))
         k2.metric("Total 2026", formatar_moeda(total_26))
-        k3.metric("Variação", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
+        k3.metric("Variação (YoY)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
 
         st.markdown("---")
         df_c25 = df_2025.groupby(col_mes_25)[col_real].sum().reset_index()
@@ -301,7 +332,7 @@ elif "Orçamento" in aba_selecionada:
         col_ben = achar_coluna(df, ["beneficio", "benefício"])
         col_mes = achar_coluna(df, ["mês", "mes", "data"])
 
-        st.sidebar.subheader("Filtros")
+        st.sidebar.markdown("### 🔍 Filtros")
         df_filt = df.copy()
         if col_mes:
             meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
@@ -351,7 +382,7 @@ elif "Orçamento" in aba_selecionada:
                 st.plotly_chart(fig_p, use_container_width=True)
 
         st.markdown("---")
-        st.subheader("📑 Visão Matricial")
+        st.subheader("📑 Visão Matricial Detalhada")
         if col_ben and col_mes and col_real:
             try:
                 piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
