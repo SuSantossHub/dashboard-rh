@@ -51,13 +51,16 @@ def set_png_as_page_bg(png_file):
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
         
+        .stProgress > div > div > div > div {
+            background-color: #ff4b4b;
+        }
         /* Ajuste para alinhar imagem e texto no título da home */
         .home-title {
             margin-bottom: 0px;
             display: flex;
             align-items: center;
             gap: 12px;
-            flex-wrap: wrap; /* Permite quebrar linha caso a tela seja pequena */
+            flex-wrap: wrap; 
         }
         </style>
         ''' % bin_str
@@ -202,7 +205,6 @@ OPCOES_MENU = [
 
 # 2. Navegação Principal
 st.sidebar.header("Navegação")
-# label_visibility="collapsed" faz o texto "Escolha a Visão:" sumir
 aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU, label_visibility="collapsed")
 
 # 3. Botão de Sair posicionado no final da barra
@@ -224,11 +226,11 @@ if aba_selecionada == "Início":
         logo_b64 = get_base64_of_bin_file("favicon.png")
         logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 40px;">'
 
-    # Novo cabeçalho executivo
+    # NOVO CABEÇALHO (Logo primeiro, depois o título)
     st.markdown(f"""
         <div style="border-left: 5px solid #ff4b4b; padding-left: 15px; margin-bottom: 30px;">
             <h1 class="home-title">
-                Gestão estratégica e performance dos benefícios V4 {logo_html}
+                {logo_html} V4 – Gestão Estratégica de Benefícios
             </h1>
             <h3 style="color: #4b4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 5px;">
                 Bem-vindos ao V4 Benefits Performance.
