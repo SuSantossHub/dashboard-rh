@@ -230,18 +230,17 @@ if aba_selecionada == "Início":
     st.markdown(f"""
         <div style="border-left: 5px solid #ff4b4b; padding-left: 15px; margin-bottom: 30px;">
             <h1 class="home-title">
-                {logo_html} V4 – Gestão Estratégica de Benefícios
+                {logo_html} Benefits Intelligence
             </h1>
             <h3 style="color: #4b4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 5px;">
-                Bem-vindos ao V4 Benefits Performance.
+                Bem-vindos ao V4 Benefits Intelligence.
             </h3>
             <p style="color: gray; font-size: 16px; max-width: 900px;">
-                Aqui você acompanha, planeja e analisa a performance dos benefícios com uma visão estratégica e consolidada, conectando orçamento, gestão e desempenho em um único painel.
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("Selecione uma opção no menu lateral para iniciar.")
+Bem-vindos ao V4 Benefits Intelligence.
+Plataforma estratégica para gestão e inteligência dos benefícios V4, reunindo orçamento, comparativos anuais e indicadores de performance em um único ambiente.
+
+Escolha a opção desejada para avançar.        
+ 
 
 
 # === ANÁLISE FINANCEIRA ===
