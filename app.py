@@ -6,26 +6,24 @@ import os
 import base64
 
 # ==============================================================================
-# 1. Configuração da Página (OTIMIZADO)
+# 1. Configuração da Página
 # ==============================================================================
 st.set_page_config(
     page_title="Dashboard de Benefícios | V4 Company", 
     layout="wide",
-    page_icon="favicon.png", # Mantém o ícone na aba do navegador (profissional)
+    page_icon="favicon.png",
     initial_sidebar_state="expanded"
 )
 
 # ==============================================================================
-# FUNÇÕES AUXILIARES (VISUAL & DADOS)
+# FUNÇÕES AUXILIARES
 # ==============================================================================
 def get_base64_of_bin_file(bin_file):
-    """Converte arquivo em texto para o HTML conseguir ler."""
     with open(bin_file, 'rb') as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
 def set_png_as_page_bg(png_file):
-    """Define a imagem de fundo."""
     try:
         bin_str = get_base64_of_bin_file(png_file)
         page_bg_img = '''
@@ -40,7 +38,6 @@ def set_png_as_page_bg(png_file):
         [data-testid="stSidebar"] {
             background-color: rgba(255, 255, 255, 0.95);
         }
-        /* Estilo da Caixa de Login */
         .login-box {
             background-color: rgba(0, 0, 0, 0.85);
             padding: 40px;
@@ -54,9 +51,10 @@ def set_png_as_page_bg(png_file):
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
         
-        /* Esconde botão de deploy e menu hamburguer para diretoria se necessário */
-        /* #MainMenu {visibility: hidden;} */
-        /* footer {visibility: hidden;} */
+        /* Ajuste para barra de progresso ficar vermelha/estilizada */
+        .stProgress > div > div > div > div {
+            background-color: #ff4b4b;
+        }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -76,20 +74,11 @@ def remover_acentos(texto):
     except:
         return str(texto).lower()
 
-# MAPAS DE TEMPO
 MAPA_MESES = {'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
               'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12}
 
 def get_mes_ordem(nome_mes):
     return MAPA_MESES.get(str(nome_mes).lower()[:3], 99)
-
-def get_trimestre(nome_mes):
-    ordem = get_mes_ordem(nome_mes)
-    if 1 <= ordem <= 3: return "Q1 (Jan-Mar)"
-    elif 4 <= ordem <= 6: return "Q2 (Abr-Jun)"
-    elif 7 <= ordem <= 9: return "Q3 (Jul-Set)"
-    elif 10 <= ordem <= 12: return "Q4 (Out-Dez)"
-    return "Outros"
 
 def achar_coluna(df, termos):
     colunas_normalizadas = {col: remover_acentos(col) for col in df.columns}
@@ -125,13 +114,12 @@ def load_data(gid):
     return df
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN (MULTI-USUÁRIO)
+# 🔒 SISTEMA DE LOGIN
 # ==============================================================================
 def check_password():
-    # Definição dos Usuários e Senhas
     CREDENCIAIS = {
-        "Admin Opers": "BenefitsV4Company",  # Acesso Total
-        "diretoria": "V4Diretoria2026"       # Acesso Visualização
+        "Admin Opers": "BenefitsV4Company",  
+        "diretoria": "V4Diretoria2026"       
     }
 
     def password_entered():
@@ -141,7 +129,6 @@ def check_password():
         if user in CREDENCIAIS and pwd == CREDENCIAIS[user]:
             st.session_state["password_correct"] = True
             st.session_state["usuario_logado"] = user
-            # Define o perfil (Role)
             st.session_state["role"] = "admin" if user == "Admin Opers" else "viewer"
             del st.session_state["password"]
         else:
@@ -150,13 +137,11 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # 1. Carrega Background
     if os.path.exists("capa_login.jpg.jpg"):
         set_png_as_page_bg("capa_login.jpg.jpg")
     elif os.path.exists("capa_login.jpg"):
         set_png_as_page_bg("capa_login.jpg")
 
-    # 2. Layout Centralizado (SEM LOGO, APENAS TEXTO ATUALIZADO)
     col_esq, col_centro, col_dir = st.columns([1, 2, 1])
     with col_centro:
         st.markdown("<br><br>", unsafe_allow_html=True)
@@ -191,10 +176,7 @@ if not check_password():
 usuario_atual = st.session_state.get("usuario_logado", "Visitante")
 role = st.session_state.get("role", "viewer")
 
-# Barra Lateral Personalizada
 st.sidebar.success(f"👤 **{usuario_atual}**")
-
-# Se for admin, mostra opção de ajuste (simulado aqui como visualização crua)
 if role == "admin":
     st.sidebar.caption("🔧 Modo Admin Ativo")
 
@@ -206,13 +188,11 @@ st.sidebar.markdown("---")
 
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
-GID_DASH_2025 = "2124043219"
 
 OPCOES_MENU = [
     "Orçamento x Realizado | 2026",
     "Orçamento x Realizado | 2025",
-    "Comparativo: 2025 vs 2026 (De/Para)",
-    "Dashboard Trimestral"
+    "Comparativo: 2025 vs 2026 (De/Para)"
 ]
 
 st.sidebar.header("Navegação")
@@ -222,103 +202,85 @@ aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
 # LÓGICA DAS VISUALIZAÇÕES
 # ------------------------------------------------------------------------------
 
-if "Trimestral" in aba_selecionada:
-    st.header("📊 Dashboard Executivo e Trimestral")
-    df = load_data(GID_DASH_2025)
-    if df is None: df = load_data(GID_2025)
-
-    if df is not None:
-        col_real = achar_coluna(df, ["realizado", "executado", "soma"])
-        col_mes = achar_coluna(df, ["mês", "mes", "data"])
-        col_ben = achar_coluna(df, ["beneficio", "benefício"])
-
-        if col_mes and col_real:
-            df['Trimestre'] = df[col_mes].apply(get_trimestre)
-            tris = sorted(df['Trimestre'].unique())
-            
-            # Filtros bem visíveis para Diretoria
-            st.sidebar.markdown("### 🔍 Filtros Inteligentes")
-            sel_t = st.sidebar.multiselect("Filtrar Trimestre:", tris)
-            
-            df_d = df[df['Trimestre'].isin(sel_t)] if sel_t else df.copy()
-
-            # KPIs de Cabeçalho (Para visualização rápida da Diretoria)
-            total_periodo = df_d[col_real].sum()
-            k1, k2 = st.columns(2)
-            k1.metric("Total Selecionado", formatar_moeda(total_periodo))
-            if sel_t:
-                k2.info(f"Visualizando: {', '.join(sel_t)}")
-
-            st.markdown("---")
-
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Total por Benefício")
-                if col_ben:
-                    df_ben = df_d.groupby(col_ben)[col_real].sum().reset_index()
-                    df_ben = df_ben.sort_values(col_real, ascending=False)
-                    fig1 = px.bar(df_ben, x=col_ben, y=col_real, text_auto='.2s', color_discrete_sequence=['#636EFA'])
-                    fig1.update_layout(template="plotly_white", yaxis_tickprefix="R$ ")
-                    st.plotly_chart(fig1, use_container_width=True)
-
-            with c2:
-                st.subheader("Share por Trimestre")
-                df_tri = df_d.groupby('Trimestre')[col_real].sum().reset_index()
-                fig2 = px.pie(df_tri, values=col_real, names='Trimestre', hole=0.6, color_discrete_sequence=px.colors.sequential.RdBu)
-                fig2.update_traces(textinfo='percent+label')
-                st.plotly_chart(fig2, use_container_width=True)
-
-            st.markdown("---")
-            st.subheader("Evolução Detalhada (Mensal)")
-            if col_ben:
-                df_evo = df_d.groupby([col_mes, col_ben])[col_real].sum().reset_index()
-                df_evo['ordem'] = df_evo[col_mes].apply(get_mes_ordem)
-                df_evo = df_evo.sort_values('ordem')
-                fig3 = px.bar(df_evo, x=col_mes, y=col_real, color=col_ben, barmode='group', text_auto='.2s')
-                fig3.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis={'categoryorder':'array', 'categoryarray': df_evo[col_mes].unique()})
-                st.plotly_chart(fig3, use_container_width=True)
-        else:
-            if role == "admin":
-                st.error("Admin: Colunas 'Mês' ou 'Realizado' não encontradas. Verifique a planilha.")
-            else:
-                st.warning("Dados indisponíveis no momento.")
-
-elif "Comparativo" in aba_selecionada:
+# === COMPARATIVO MÊS A MÊS (AJUSTADO) ===
+if "Comparativo" in aba_selecionada:
     st.header("⚖️ Comparativo Anual: 2025 vs 2026")
+    st.caption("Comparação direta mês a mês por benefício")
+
     with st.spinner("Carregando dados..."):
         df_2025 = load_data(GID_2025)
         df_2026 = load_data(GID_2026)
     
     if df_2025 is not None and df_2026 is not None:
+        # Colunas
         col_real = achar_coluna(df_2025, ["realizado", "executado", "soma"])
         col_mes_25 = achar_coluna(df_2025, ["mês", "mes", "data"])
         col_mes_26 = achar_coluna(df_2026, ["mês", "mes", "data"])
+        col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
+        col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
 
-        total_25 = df_2025[col_real].sum()
-        total_26 = df_2026[col_real].sum()
+        # === NOVO: FILTRO DE BENEFÍCIO ===
+        st.sidebar.markdown("### 🔍 Filtro de Comparação")
+        
+        # Pega todos os benefícios únicos dos dois anos
+        bens_25 = df_2025[col_ben_25].unique() if col_ben_25 else []
+        bens_26 = df_2026[col_ben_26].unique() if col_ben_26 else []
+        todos_bens = sorted(list(set(bens_25) | set(bens_26)))
+        
+        sel_ben = st.sidebar.multiselect("Selecione o Benefício:", todos_bens)
+
+        # Filtra os DataFrames se houver seleção
+        df_25_filt = df_2025[df_2025[col_ben_25].isin(sel_ben)] if sel_ben else df_2025
+        df_26_filt = df_2026[df_2026[col_ben_26].isin(sel_ben)] if sel_ben else df_2026
+
+        # Totais filtrados
+        total_25 = df_25_filt[col_real].sum()
+        total_26 = df_26_filt[col_real].sum()
         delta = total_26 - total_25
         delta_perc = (delta / total_25 * 100) if total_25 > 0 else 0
 
-        # KPIs Grandes para a Diretoria
-        st.markdown("### Resumo Executivo")
+        # KPIs
+        st.markdown("### Resumo do Período Selecionado")
         k1, k2, k3 = st.columns(3)
         k1.metric("Total 2025", formatar_moeda(total_25))
         k2.metric("Total 2026", formatar_moeda(total_26))
-        k3.metric("Variação (YoY)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
+        k3.metric("Diferença (R$)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
 
         st.markdown("---")
-        df_c25 = df_2025.groupby(col_mes_25)[col_real].sum().reset_index()
+        
+        # === GRÁFICO MODELO (BARRAS LADO A LADO) ===
+        st.subheader("Evolução Mensal Comparativa (Mês x Mês)")
+        
+        # Agrupa por mês
+        df_c25 = df_25_filt.groupby(col_mes_25)[col_real].sum().reset_index()
         df_c25.columns = ['Mês', 'Valor']; df_c25['Ano'] = '2025'
-        df_c26 = df_2026.groupby(col_mes_26)[col_real].sum().reset_index()
+        
+        df_c26 = df_26_filt.groupby(col_mes_26)[col_real].sum().reset_index()
         df_c26.columns = ['Mês', 'Valor']; df_c26['Ano'] = '2026'
         
+        # Junta os dados
         df_comb = pd.concat([df_c25, df_c26])
         df_comb['ordem'] = df_comb['Mês'].apply(get_mes_ordem)
         df_comb = df_comb.sort_values('ordem')
-        fig = px.bar(df_comb, x="Mês", y="Valor", color="Ano", barmode="group", text_auto='.2s', color_discrete_map={'2025': '#D3D3D3', '2026': '#8B0000'})
-        fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ")
+        
+        # Cria o gráfico estilo "Modelo" (Grouped Bar Chart)
+        fig = px.bar(df_comb, x="Mês", y="Valor", color="Ano", barmode="group", 
+                     text_auto='.2s', 
+                     color_discrete_map={'2025': '#999999', '2026': '#CC0000'}, # Cinza e Vermelho V4
+                     height=500)
+        
+        fig.update_layout(
+            template="plotly_white", 
+            yaxis_tickprefix="R$ ",
+            xaxis_title=None,
+            yaxis_title="Valor Realizado",
+            legend_title="Ano Base",
+            hovermode="x unified"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
+
+# === ORÇAMENTO x REALIZADO (COM BARRA DE PROGRESSO) ===
 elif "Orçamento" in aba_selecionada:
     gid_atual = GID_2026 if "2026" in aba_selecionada else GID_2025
     df = load_data(gid_atual)
@@ -347,13 +309,24 @@ elif "Orçamento" in aba_selecionada:
         BUDGET_ANUAL = 3432000.00
         saldo = BUDGET_ANUAL - realizado
         
+        # Cálculo de Progresso
+        perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
+        perc_uso_vis = min(perc_uso, 1.0) # Trava em 100% pra não quebrar a barra visual
+
+        # KPIs
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Budget Mensal", "R$ 286.000,00")
         c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
         c3.metric("Realizado YTD", formatar_moeda(realizado))
         c4.metric("Saldo Anual", formatar_moeda(saldo), delta=formatar_moeda(saldo))
         
+        # === BARRA DE PROGRESSO DO BUDGET ===
+        st.markdown(f"**Consumo do Budget Anual:** {perc_uso*100:.1f}%")
+        st.progress(perc_uso_vis)
+        
         st.markdown("---")
+        
+        # Gráficos
         g1, g2 = st.columns(2)
         with g1:
             st.subheader("Evolução Mensal")
@@ -365,8 +338,8 @@ elif "Orçamento" in aba_selecionada:
                 df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
                 df_c = df_c.sort_values('ordem')
                 df_m = df_c.melt(id_vars=[col_mes], value_vars=vars_p, var_name="Tipo", value_name="Valor")
-                cores = {col_real: '#8B0000'}; 
-                if col_orc: cores[col_orc] = '#D3D3D3'
+                cores = {col_real: '#CC0000'}; # Vermelho
+                if col_orc: cores[col_orc] = '#D3D3D3' # Cinza
                 fig = px.bar(df_m, x=col_mes, y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
                 fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis={'categoryorder':'array', 'categoryarray': df_c[col_mes].unique()})
                 st.plotly_chart(fig, use_container_width=True)
