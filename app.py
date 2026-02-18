@@ -6,19 +6,12 @@ import os
 import base64
 
 # ==============================================================================
-# 1. Configuração da Página (OTIMIZADO PARA BUSCA)
+# 1. Configuração da Página (DEVE SER O PRIMEIRO COMANDO)
 # ==============================================================================
-# O 'page_title' é o que aparece na aba do navegador e no título azul do Google.
 st.set_page_config(
-    page_title="Dashboard de Benefícios | V4 Company", 
+    page_title="Dashboard RH Executivo",
     layout="wide",
-    page_icon="favicon.png",
-    initial_sidebar_state="expanded",
-    menu_items={
-        'Get Help': 'https://www.v4company.com',
-        'Report a bug': "https://www.v4company.com",
-        'About': "Dashboard de Gestão de Benefícios Corporativos e RH da V4 Company."
-    }
+    page_icon="favicon.png"
 )
 
 # ==============================================================================
@@ -59,9 +52,6 @@ def set_png_as_page_bg(png_file):
         .login-box h1 { font-size: 26px; color: white !important; margin-bottom: 5px; }
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 400; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
-        
-        /* Texto invisível para SEO (Robôs de busca leem isso) */
-        .seo-text { display: none; }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -130,17 +120,9 @@ def load_data(gid):
     return df
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN (COM LOGO E SEO)
+# 🔒 SISTEMA DE LOGIN (COM LOGO)
 # ==============================================================================
 def check_password():
-    # SEO Hack: Texto oculto para ajudar motores de busca a indexarem a página de login
-    st.markdown("""
-    <div class="seo-text">
-        <h1>Dashboard Benefícios V4 Company</h1>
-        <p>Painel de controle financeiro, RH, gestão de benefícios corporativos, orçamento e realizado.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
     def password_entered():
         if st.session_state["username"] == "Benefits Opers" and \
            st.session_state["password"] == "BenefitsV4Company":
@@ -159,10 +141,11 @@ def check_password():
     elif os.path.exists("capa_login.jpg"):
         set_png_as_page_bg("capa_login.jpg")
 
-    # 2. Prepara Logo
+    # 2. Prepara Logo para o HTML
     logo_html = ""
     if os.path.exists("favicon.png"):
         logo_b64 = get_base64_of_bin_file("favicon.png")
+        # Ajuste o width abaixo se quiser o logo maior ou menor
         logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="width: 80px; margin-bottom: 20px;">'
 
     # 3. Layout Centralizado
@@ -170,6 +153,7 @@ def check_password():
     with col_centro:
         st.markdown("<br><br>", unsafe_allow_html=True)
         with st.container():
+            # Aqui injetamos o logo e o texto ajustado
             st.markdown(f"""
                 <div class="login-box">
                     {logo_html}
