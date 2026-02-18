@@ -51,8 +51,12 @@ def set_png_as_page_bg(png_file):
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
         
-        .stProgress > div > div > div > div {
-            background-color: #ff4b4b;
+        /* Ajuste para alinhar imagem e texto no título da home */
+        .home-title {
+            margin-bottom: 0px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         </style>
         ''' % bin_str
@@ -191,7 +195,6 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# OPÇÕES DO MENU ATUALIZADAS
 OPCOES_MENU = [
     "Início",
     "Orçamento de Benefícios 2026",
@@ -200,7 +203,7 @@ OPCOES_MENU = [
 ]
 
 st.sidebar.header("Navegação")
-aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
+aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU)
 
 # ------------------------------------------------------------------------------
 # LÓGICA DAS VISUALIZAÇÕES
@@ -210,18 +213,24 @@ aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
 if aba_selecionada == "Início":
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Cabeçalho de Boas-Vindas
-    st.markdown("""
+    logo_html = ""
+    if os.path.exists("favicon.png"):
+        logo_b64 = get_base64_of_bin_file("favicon.png")
+        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 45px;">'
+
+    st.markdown(f"""
         <div style="border-left: 5px solid #ff4b4b; padding-left: 15px; margin-bottom: 30px;">
-            <h1 style="margin-bottom: 0px;">Olá, people! 👋</h1>
-            <h3 style="color: gray; font-weight: 400; margin-top: 5px;">Bem-vindos ao painel de orçamento.</h3>
+            <h1 class="home-title">
+                Olá, people! {logo_html}
+            </h1>
+            <h3 style="color: gray; font-weight: 400; margin-top: 5px;">Bem-vindos ao painel de orçamento Orçamento de Benefícios V4.</h3>
         </div>
     """, unsafe_allow_html=True)
     
     st.markdown("Selecione uma opção no menu lateral para iniciar.")
 
 
-# === ANÁLISE FINANCEIRA (ANTIGO COMPARATIVO) ===
+# === ANÁLISE FINANCEIRA ===
 elif "Análise Financeira" in aba_selecionada:
     st.header("⚖️ Análise Financeira (Mês a Mês)")
     st.caption("Selecione o mês ao lado para comparar o desempenho exato entre 2025 e 2026.")
@@ -340,19 +349,16 @@ elif "Orçamento" in aba_selecionada:
 
         realizado = df_filt[col_real].sum() if col_real else 0
         BUDGET_ANUAL = 3432000.00
-        saldo = BUDGET_ANUAL - realizado
         
         perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
-        perc_uso_vis = min(perc_uso, 1.0) 
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Budget Mensal", "R$ 286.000,00")
         c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
         c3.metric("Realizado YTD", formatar_moeda(realizado))
-        c4.metric("Saldo Anual", formatar_moeda(saldo), delta=formatar_moeda(saldo))
         
-        st.markdown(f"**Consumo do Budget Anual:** {perc_uso*100:.1f}%")
-        st.progress(perc_uso_vis)
+        # MUDANÇA: O valor em branco sumiu (usando value=" ") e mantivemos o percentual no delta
+        c4.metric("Saldo Anual", value=" ", delta=f"{perc_uso*100:.1f}%")
         
         st.markdown("---")
         
