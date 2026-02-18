@@ -51,6 +51,9 @@ def set_png_as_page_bg(png_file):
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
         
+        .stProgress > div > div > div > div {
+            background-color: #ff4b4b;
+        }
         /* Ajuste para alinhar imagem e texto no título da home */
         .home-title {
             margin-bottom: 0px;
@@ -182,13 +185,10 @@ if not check_password():
 usuario_atual = st.session_state.get("usuario_logado", "Visitante")
 role = st.session_state.get("role", "viewer")
 
+# 1. Dados do Usuário
 st.sidebar.success(f"👤 **{usuario_atual}**")
 if role == "admin":
     st.sidebar.caption("🔧 Modo Admin Ativo")
-
-if st.sidebar.button("Sair / Logout"):
-    st.session_state["password_correct"] = False
-    st.rerun()
 
 st.sidebar.markdown("---")
 
@@ -202,8 +202,16 @@ OPCOES_MENU = [
     "Análise Financeira de Benefícios"
 ]
 
+# 2. Navegação Principal
 st.sidebar.header("Navegação")
-aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU)
+# label_visibility="collapsed" faz o texto "Escolha a Visão:" sumir!
+aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU, label_visibility="collapsed")
+
+# 3. Botão de Sair posicionado no final da barra
+st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True) # Espaçamento para empurrar o botão para baixo
+if st.sidebar.button("Sair / Logout", use_container_width=True):
+    st.session_state["password_correct"] = False
+    st.rerun()
 
 # ------------------------------------------------------------------------------
 # LÓGICA DAS VISUALIZAÇÕES
