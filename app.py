@@ -54,16 +54,6 @@ def set_png_as_page_bg(png_file):
         .stProgress > div > div > div > div {
             background-color: #ff4b4b;
         }
-        
-        /* Efeito de Hover nos botões dos Cards da Home */
-        div[data-testid="stButton"] > button {
-            transition: all 0.3s ease;
-        }
-        div[data-testid="stButton"] > button:hover {
-            border-color: #ff4b4b;
-            color: #ff4b4b;
-            transform: translateY(-2px);
-        }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -184,13 +174,6 @@ if not check_password():
 # ==============================================================================
 # 🚀 CONTROLE DE NAVEGAÇÃO
 # ==============================================================================
-# Inicia a variável de navegação no estado da sessão
-if "menu_opcao" not in st.session_state:
-    st.session_state["menu_opcao"] = "Início"
-
-def navegar(nova_aba):
-    """Função chamada pelos botões da Home para trocar de página."""
-    st.session_state["menu_opcao"] = nova_aba
 
 usuario_atual = st.session_state.get("usuario_logado", "Visitante")
 role = st.session_state.get("role", "viewer")
@@ -208,26 +191,22 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
+# OPÇÕES DO MENU ATUALIZADAS
 OPCOES_MENU = [
     "Início",
-    "Orçamento x Realizado | 2026",
-    "Orçamento x Realizado | 2025",
-    "Comparativo: 2025 vs 2026 (De/Para)"
+    "Orçamento de Benefícios 2026",
+    "Orçamento de Benefícios 2025",
+    "Análise Financeira de Benefícios"
 ]
 
 st.sidebar.header("Navegação")
-# O selectbox está sincronizado com o st.session_state["menu_opcao"]
-aba_selecionada = st.sidebar.selectbox(
-    "Escolha a Visão:", 
-    OPCOES_MENU, 
-    key="menu_opcao"
-)
+aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
 
 # ------------------------------------------------------------------------------
 # LÓGICA DAS VISUALIZAÇÕES
 # ------------------------------------------------------------------------------
 
-# === PÁGINA INICIAL (HOME) ===
+# === PÁGINA INICIAL (HOME LIMPA) ===
 if aba_selecionada == "Início":
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -239,36 +218,12 @@ if aba_selecionada == "Início":
         </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("Selecione uma opção abaixo para começar a explorar os dados:")
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("Selecione uma opção no menu lateral para iniciar.")
 
-    # Criação dos Cards
-    c1, c2, c3 = st.columns(3)
-    
-    with c1:
-        with st.container(border=True):
-            st.markdown("### 🎯 Orçamento 2026")
-            st.markdown("Acompanhe o painel executivo atual, gestão do budget mensal e o consumo YTD.")
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.button("Acessar 2026", on_click=navegar, args=("Orçamento x Realizado | 2026",), use_container_width=True)
 
-    with c2:
-        with st.container(border=True):
-            st.markdown("### 📅 Orçamento 2025")
-            st.markdown("Visão histórica detalhada, distribuição de share por benefício e custos passados.")
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.button("Acessar 2025", on_click=navegar, args=("Orçamento x Realizado | 2025",), use_container_width=True)
-
-    with c3:
-        with st.container(border=True):
-            st.markdown("### ⚖️ Comparativo Anual")
-            st.markdown("Análise mês a mês (De/Para) focada para medir variação percentual e economia gerada.")
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.button("Ver Comparativo", on_click=navegar, args=("Comparativo: 2025 vs 2026 (De/Para)",), use_container_width=True, type="primary")
-
-# === COMPARATIVO MÊS A MÊS ===
-elif "Comparativo" in aba_selecionada:
-    st.header("⚖️ Comparativo Mês a Mês")
+# === ANÁLISE FINANCEIRA (ANTIGO COMPARATIVO) ===
+elif "Análise Financeira" in aba_selecionada:
+    st.header("⚖️ Análise Financeira (Mês a Mês)")
     st.caption("Selecione o mês ao lado para comparar o desempenho exato entre 2025 e 2026.")
 
     with st.spinner("Carregando dados..."):
@@ -358,14 +313,14 @@ elif "Comparativo" in aba_selecionada:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# === ORÇAMENTO x REALIZADO ===
+# === ORÇAMENTO x REALIZADO (2025 ou 2026) ===
 elif "Orçamento" in aba_selecionada:
     gid_atual = GID_2026 if "2026" in aba_selecionada else GID_2025
     df = load_data(gid_atual)
     
     if df is not None:
         ano = "2026" if "2026" in aba_selecionada else "2025"
-        st.header(f"🎯 Painel Executivo {ano}")
+        st.header(f"🎯 Orçamento de Benefícios {ano}")
         
         col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
         col_real = achar_coluna(df, ["realizado", "executado", "soma"])
