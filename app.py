@@ -5,22 +5,33 @@ import unicodedata
 import os
 import base64
 
-# 1. Configuração da Página (DEVE SER O PRIMEIRO COMANDO)
+# ==============================================================================
+# 1. Configuração da Página (OTIMIZADO PARA BUSCA)
+# ==============================================================================
+# O 'page_title' é o que aparece na aba do navegador e no título azul do Google.
 st.set_page_config(
-    page_title="Dashboard RH Executivo",
+    page_title="Dashboard de Benefícios | V4 Company", 
     layout="wide",
-    page_icon="favicon.png"
+    page_icon="favicon.png",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://www.v4company.com',
+        'Report a bug': "https://www.v4company.com",
+        'About': "Dashboard de Gestão de Benefícios Corporativos e RH da V4 Company."
+    }
 )
 
 # ==============================================================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES (VISUAL & DADOS)
 # ==============================================================================
 def get_base64_of_bin_file(bin_file):
+    """Converte arquivo em texto para o HTML conseguir ler."""
     with open(bin_file, 'rb') as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
 def set_png_as_page_bg(png_file):
+    """Define a imagem de fundo."""
     try:
         bin_str = get_base64_of_bin_file(png_file)
         page_bg_img = '''
@@ -35,16 +46,22 @@ def set_png_as_page_bg(png_file):
         [data-testid="stSidebar"] {
             background-color: rgba(255, 255, 255, 0.95);
         }
+        /* Estilo da Caixa de Login */
         .login-box {
-            background-color: rgba(0, 0, 0, 0.8);
-            padding: 30px;
+            background-color: rgba(0, 0, 0, 0.85); /* Fundo escuro */
+            padding: 40px;
             border-radius: 15px;
             color: white;
             text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        .login-box h1, .login-box h3, .login-box p, .login-box label {
-             color: white !important;
-        }
+        .login-box h1 { font-size: 26px; color: white !important; margin-bottom: 5px; }
+        .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 400; }
+        .login-box p { font-size: 14px; color: #cccccc !important; }
+        
+        /* Texto invisível para SEO (Robôs de busca leem isso) */
+        .seo-text { display: none; }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -64,15 +81,12 @@ def remover_acentos(texto):
     except:
         return str(texto).lower()
 
-# MAPA DE MESES PARA ORDENAÇÃO
-MAPA_MESES = {
-    'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-    'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
-}
+# MAPAS DE TEMPO
+MAPA_MESES = {'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
+              'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12}
 
 def get_mes_ordem(nome_mes):
-    chave = str(nome_mes).lower()[:3]
-    return MAPA_MESES.get(chave, 99)
+    return MAPA_MESES.get(str(nome_mes).lower()[:3], 99)
 
 def get_trimestre(nome_mes):
     ordem = get_mes_ordem(nome_mes)
@@ -93,7 +107,6 @@ def achar_coluna(df, termos):
 
 @st.cache_data
 def load_data(gid):
-    # ID DA PLANILHA (FIXO)
     SHEET_ID = "10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ"
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     try:
@@ -102,7 +115,6 @@ def load_data(gid):
         return None
 
     termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum"]
-    
     for col in df.columns:
         col_norm = remover_acentos(col)
         eh_financeiro = any(remover_acentos(t) in col_norm for t in termos_financeiros)
@@ -118,20 +130,21 @@ def load_data(gid):
     return df
 
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN SEGURO
+# 🔒 SISTEMA DE LOGIN (COM LOGO E SEO)
 # ==============================================================================
 def check_password():
-    """Retorna True se o usuário tiver a senha correta."""
+    # SEO Hack: Texto oculto para ajudar motores de busca a indexarem a página de login
+    st.markdown("""
+    <div class="seo-text">
+        <h1>Dashboard Benefícios V4 Company</h1>
+        <p>Painel de controle financeiro, RH, gestão de benefícios corporativos, orçamento e realizado.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     def password_entered():
-        """Verifica se a senha digitada bate com a definida aqui."""
-        USUARIO_CORRETO = "Benefits Opers"
-        SENHA_CORRETA = "BenefitsV4Company"
-
-        if st.session_state["username"] == USUARIO_CORRETO and \
-           st.session_state["password"] == SENHA_CORRETA:
+        if st.session_state["username"] == "Benefits Opers" and \
+           st.session_state["password"] == "BenefitsV4Company":
             st.session_state["password_correct"] = True
-            # SALVA O NOME PARA EVITAR KEYERROR
             st.session_state["usuario_logado"] = st.session_state["username"]
             del st.session_state["password"]
         else:
@@ -140,22 +153,29 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # TELA DE LOGIN
-    # Tenta carregar imagem com o nome duplo (.jpg.jpg) primeiro, depois o simples
+    # 1. Carrega Background
     if os.path.exists("capa_login.jpg.jpg"):
         set_png_as_page_bg("capa_login.jpg.jpg")
     elif os.path.exists("capa_login.jpg"):
         set_png_as_page_bg("capa_login.jpg")
 
+    # 2. Prepara Logo
+    logo_html = ""
+    if os.path.exists("favicon.png"):
+        logo_b64 = get_base64_of_bin_file("favicon.png")
+        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="width: 80px; margin-bottom: 20px;">'
+
+    # 3. Layout Centralizado
     col_esq, col_centro, col_dir = st.columns([1, 2, 1])
     with col_centro:
         st.markdown("<br><br>", unsafe_allow_html=True)
         with st.container():
-            st.markdown("""
+            st.markdown(f"""
                 <div class="login-box">
-                    <h1>🔒 Acesso Restrito</h1>
-                    <h3>Diretoria & Benefits Operations</h3>
-                    <p>Entre com as credenciais corporativas V4 para visualizar os dados sensíveis.</p>
+                    {logo_html}
+                    <h1>Acesso Restrito</h1>
+                    <h3>Diretoria RH & Benefits Operations</h3>
+                    <p>Entre com as credenciais corporativas V4.</p>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -166,7 +186,7 @@ def check_password():
             st.button("Entrar no Painel", on_click=password_entered, type="primary", use_container_width=True)
 
             if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-                st.error("🚫 Acesso negado. Verifique suas credenciais.")
+                st.error("🚫 Acesso negado.")
         st.markdown("<br><br>", unsafe_allow_html=True)
             
     return False
@@ -178,8 +198,7 @@ if not check_password():
 # 🚀 ÁREA LOGADA
 # ==============================================================================
 
-# Recupera o usuário de forma segura
-usuario_atual = st.session_state.get("usuario_logado", "Diretoria")
+usuario_atual = st.session_state.get("usuario_logado", "Admin")
 
 st.sidebar.success(f"👤 Logado: **{usuario_atual}**")
 if st.sidebar.button("Sair / Logout"):
@@ -188,10 +207,9 @@ if st.sidebar.button("Sair / Logout"):
 
 st.sidebar.markdown("---")
 
-# IDs DAS ABAS
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
-GID_DASH_2025 = "2124043219" # ID da aba Dashboard - 2025
+GID_DASH_2025 = "2124043219"
 
 OPCOES_MENU = [
     "Orçamento x Realizado | 2026",
@@ -204,17 +222,12 @@ st.sidebar.header("Navegação")
 aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
 
 # ------------------------------------------------------------------------------
-# LÓGICA DAS VISÕES
+# LÓGICA DAS ABAS
 # ------------------------------------------------------------------------------
 
-# === 1. VISÃO: DASHBOARD TRIMESTRAL (DADOS DA ABA DASHBOARD - 2025) ===
 if "Trimestral" in aba_selecionada:
     st.header("📊 Dashboard Executivo e Trimestral")
-    
-    # Carrega dados da aba específica "Dashboard - 2025"
     df = load_data(GID_DASH_2025)
-    
-    # Se falhar, tenta a aba geral de 2025 como backup
     if df is None: df = load_data(GID_2025)
 
     if df is not None:
@@ -223,66 +236,40 @@ if "Trimestral" in aba_selecionada:
         col_ben = achar_coluna(df, ["beneficio", "benefício"])
 
         if col_mes and col_real:
-            # Cria Coluna de Trimestre
             df['Trimestre'] = df[col_mes].apply(get_trimestre)
-            
-            # Filtro Lateral
-            st.sidebar.subheader("Filtros")
             tris = sorted(df['Trimestre'].unique())
             sel_t = st.sidebar.multiselect("Filtrar Trimestre:", tris)
-            
-            # Aplica Filtro
             df_d = df[df['Trimestre'].isin(sel_t)] if sel_t else df.copy()
 
-            # --- LINHA 1: DOIS GRÁFICOS (BARRAS E ROSCA) ---
             c1, c2 = st.columns(2)
-            
             with c1:
                 st.subheader("Total por Benefício")
                 if col_ben:
                     df_ben = df_d.groupby(col_ben)[col_real].sum().reset_index()
                     df_ben = df_ben.sort_values(col_real, ascending=False)
-                    # Gráfico de Barras Cinza/Escuro (Estilo Excel)
-                    fig1 = px.bar(df_ben, x=col_ben, y=col_real, text_auto='.2s', 
-                                  color_discrete_sequence=['#636EFA']) # Azul padrão ou cinza
+                    fig1 = px.bar(df_ben, x=col_ben, y=col_real, text_auto='.2s', color_discrete_sequence=['#636EFA'])
                     fig1.update_layout(template="plotly_white", yaxis_tickprefix="R$ ")
                     st.plotly_chart(fig1, use_container_width=True)
 
             with c2:
                 st.subheader("Custo por Trimestre")
                 df_tri = df_d.groupby('Trimestre')[col_real].sum().reset_index()
-                # Gráfico de Rosca (Donut)
-                fig2 = px.pie(df_tri, values=col_real, names='Trimestre', hole=0.5,
-                              color_discrete_sequence=px.colors.sequential.RdBu)
+                fig2 = px.pie(df_tri, values=col_real, names='Trimestre', hole=0.5, color_discrete_sequence=px.colors.sequential.RdBu)
                 fig2.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig2, use_container_width=True)
 
-            # --- LINHA 2: GRÁFICO DE EVOLUÇÃO DETALHADA ---
             st.markdown("---")
-            st.subheader("Evolução Mensal Detalhada (Por Benefício)")
-            
-            # Prepara dados para o gráfico agrupado
+            st.subheader("Evolução Mensal Detalhada")
             if col_ben:
                 df_evo = df_d.groupby([col_mes, col_ben])[col_real].sum().reset_index()
-                
-                # Ordena meses
                 df_evo['ordem'] = df_evo[col_mes].apply(get_mes_ordem)
                 df_evo = df_evo.sort_values('ordem')
-                
-                # Gráfico de Barras Agrupadas
-                fig3 = px.bar(df_evo, x=col_mes, y=col_real, color=col_ben, barmode='group',
-                              text_auto='.2s')
-                fig3.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", 
-                                   xaxis={'categoryorder':'array', 'categoryarray': df_evo[col_mes].unique()})
+                fig3 = px.bar(df_evo, x=col_mes, y=col_real, color=col_ben, barmode='group', text_auto='.2s')
+                fig3.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis={'categoryorder':'array', 'categoryarray': df_evo[col_mes].unique()})
                 st.plotly_chart(fig3, use_container_width=True)
-
         else:
-            st.warning("Não foi possível encontrar as colunas de 'Mês' ou 'Realizado' nesta planilha.")
-    else:
-        st.error("Erro ao carregar os dados da aba Dashboard - 2025.")
+            st.warning("Colunas 'Mês' ou 'Realizado' não encontradas. Verifique a planilha.")
 
-
-# === 2. VISÃO: COMPARATIVO 2025 vs 2026 ===
 elif "Comparativo" in aba_selecionada:
     st.header("⚖️ Comparativo Anual: 2025 vs 2026")
     with st.spinner("Carregando dados..."):
@@ -313,13 +300,10 @@ elif "Comparativo" in aba_selecionada:
         df_comb = pd.concat([df_c25, df_c26])
         df_comb['ordem'] = df_comb['Mês'].apply(get_mes_ordem)
         df_comb = df_comb.sort_values('ordem')
-        
-        fig = px.bar(df_comb, x="Mês", y="Valor", color="Ano", barmode="group",
-                     text_auto='.2s', color_discrete_map={'2025': '#D3D3D3', '2026': '#8B0000'})
+        fig = px.bar(df_comb, x="Mês", y="Valor", color="Ano", barmode="group", text_auto='.2s', color_discrete_map={'2025': '#D3D3D3', '2026': '#8B0000'})
         fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ")
         st.plotly_chart(fig, use_container_width=True)
 
-# === 3. VISÃO: ORÇAMENTO x REALIZADO ===
 elif "Orçamento" in aba_selecionada:
     gid_atual = GID_2026 if "2026" in aba_selecionada else GID_2025
     df = load_data(gid_atual)
@@ -333,7 +317,6 @@ elif "Orçamento" in aba_selecionada:
         col_ben = achar_coluna(df, ["beneficio", "benefício"])
         col_mes = achar_coluna(df, ["mês", "mes", "data"])
 
-        # Filtros
         st.sidebar.subheader("Filtros")
         df_filt = df.copy()
         if col_mes:
@@ -356,7 +339,6 @@ elif "Orçamento" in aba_selecionada:
         c4.metric("Saldo Anual", formatar_moeda(saldo), delta=formatar_moeda(saldo))
         
         st.markdown("---")
-        
         g1, g2 = st.columns(2)
         with g1:
             st.subheader("Evolução Mensal")
@@ -370,10 +352,8 @@ elif "Orçamento" in aba_selecionada:
                 df_m = df_c.melt(id_vars=[col_mes], value_vars=vars_p, var_name="Tipo", value_name="Valor")
                 cores = {col_real: '#8B0000'}; 
                 if col_orc: cores[col_orc] = '#D3D3D3'
-                fig = px.bar(df_m, x=col_mes, y="Valor", color="Tipo", barmode="group", 
-                             text_auto='.2s', color_discrete_map=cores)
-                fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ",
-                                  xaxis={'categoryorder':'array', 'categoryarray': df_c[col_mes].unique()})
+                fig = px.bar(df_m, x=col_mes, y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
+                fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis={'categoryorder':'array', 'categoryarray': df_c[col_mes].unique()})
                 st.plotly_chart(fig, use_container_width=True)
         
         with g2:
@@ -381,8 +361,7 @@ elif "Orçamento" in aba_selecionada:
             if col_ben and col_real:
                 df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
                 df_p = df_p.sort_values(col_real, ascending=False)
-                fig_p = px.pie(df_p, values=col_real, names=col_ben, hole=0.5,
-                               color_discrete_sequence=px.colors.sequential.Reds_r)
+                fig_p = px.pie(df_p, values=col_real, names=col_ben, hole=0.5, color_discrete_sequence=px.colors.sequential.Reds_r)
                 fig_p.update_traces(textposition='inside', textinfo='percent+label', textfont=dict(color='black'))
                 fig_p.update_layout(showlegend=False)
                 st.plotly_chart(fig_p, use_container_width=True)
