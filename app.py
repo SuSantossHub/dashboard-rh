@@ -54,6 +54,16 @@ def set_png_as_page_bg(png_file):
         .stProgress > div > div > div > div {
             background-color: #ff4b4b;
         }
+        
+        /* Efeito de Hover nos botões dos Cards da Home */
+        div[data-testid="stButton"] > button {
+            transition: all 0.3s ease;
+        }
+        div[data-testid="stButton"] > button:hover {
+            border-color: #ff4b4b;
+            color: #ff4b4b;
+            transform: translateY(-2px);
+        }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -172,8 +182,15 @@ if not check_password():
     st.stop()
 
 # ==============================================================================
-# 🚀 ÁREA LOGADA
+# 🚀 CONTROLE DE NAVEGAÇÃO
 # ==============================================================================
+# Inicia a variável de navegação no estado da sessão
+if "menu_opcao" not in st.session_state:
+    st.session_state["menu_opcao"] = "Início"
+
+def navegar(nova_aba):
+    """Função chamada pelos botões da Home para trocar de página."""
+    st.session_state["menu_opcao"] = nova_aba
 
 usuario_atual = st.session_state.get("usuario_logado", "Visitante")
 role = st.session_state.get("role", "viewer")
@@ -192,20 +209,65 @@ GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
 OPCOES_MENU = [
+    "Início",
     "Orçamento x Realizado | 2026",
     "Orçamento x Realizado | 2025",
     "Comparativo: 2025 vs 2026 (De/Para)"
 ]
 
 st.sidebar.header("Navegação")
-aba_selecionada = st.sidebar.selectbox("Escolha a Visão:", OPCOES_MENU)
+# O selectbox está sincronizado com o st.session_state["menu_opcao"]
+aba_selecionada = st.sidebar.selectbox(
+    "Escolha a Visão:", 
+    OPCOES_MENU, 
+    key="menu_opcao"
+)
 
 # ------------------------------------------------------------------------------
 # LÓGICA DAS VISUALIZAÇÕES
 # ------------------------------------------------------------------------------
 
-# === COMPARATIVO MÊS A MÊS (FOCADO) ===
-if "Comparativo" in aba_selecionada:
+# === PÁGINA INICIAL (HOME) ===
+if aba_selecionada == "Início":
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Cabeçalho de Boas-Vindas
+    st.markdown("""
+        <div style="border-left: 5px solid #ff4b4b; padding-left: 15px; margin-bottom: 30px;">
+            <h1 style="margin-bottom: 0px;">Olá, people! 👋</h1>
+            <h3 style="color: gray; font-weight: 400; margin-top: 5px;">Bem-vindos ao painel de orçamento.</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("Selecione uma opção abaixo para começar a explorar os dados:")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Criação dos Cards
+    c1, c2, c3 = st.columns(3)
+    
+    with c1:
+        with st.container(border=True):
+            st.markdown("### 🎯 Orçamento 2026")
+            st.markdown("Acompanhe o painel executivo atual, gestão do budget mensal e o consumo YTD.")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.button("Acessar 2026", on_click=navegar, args=("Orçamento x Realizado | 2026",), use_container_width=True)
+
+    with c2:
+        with st.container(border=True):
+            st.markdown("### 📅 Orçamento 2025")
+            st.markdown("Visão histórica detalhada, distribuição de share por benefício e custos passados.")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.button("Acessar 2025", on_click=navegar, args=("Orçamento x Realizado | 2025",), use_container_width=True)
+
+    with c3:
+        with st.container(border=True):
+            st.markdown("### ⚖️ Comparativo Anual")
+            st.markdown("Análise mês a mês (De/Para) focada para medir variação percentual e economia gerada.")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.button("Ver Comparativo", on_click=navegar, args=("Comparativo: 2025 vs 2026 (De/Para)",), use_container_width=True, type="primary")
+
+# === COMPARATIVO MÊS A MÊS ===
+elif "Comparativo" in aba_selecionada:
     st.header("⚖️ Comparativo Mês a Mês")
     st.caption("Selecione o mês ao lado para comparar o desempenho exato entre 2025 e 2026.")
 
@@ -214,24 +276,20 @@ if "Comparativo" in aba_selecionada:
         df_2026 = load_data(GID_2026)
     
     if df_2025 is not None and df_2026 is not None:
-        # Colunas
         col_real = achar_coluna(df_2025, ["realizado", "executado", "soma"])
         col_mes_25 = achar_coluna(df_2025, ["mês", "mes", "data"])
         col_mes_26 = achar_coluna(df_2026, ["mês", "mes", "data"])
         col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
         col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
 
-        # === BARRA LATERAL: FILTRO DE MÊS ===
         st.sidebar.markdown("### 📅 Período de Análise")
         mes_selecionado = st.sidebar.selectbox("Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
         
         ordem_mes_selecionado = get_mes_ordem(mes_selecionado)
         
-        # Filtra os Dataframes pelo mês
         df_25_m = df_2025[df_2025[col_mes_25].apply(get_mes_ordem) == ordem_mes_selecionado]
         df_26_m = df_2026[df_2026[col_mes_26].apply(get_mes_ordem) == ordem_mes_selecionado]
 
-        # === BARRA LATERAL: FILTRO DE BENEFÍCIO ===
         st.sidebar.markdown("### 🔍 Filtro de Benefício")
         bens_25 = df_25_m[col_ben_25].unique() if col_ben_25 else []
         bens_26 = df_26_m[col_ben_26].unique() if col_ben_26 else []
@@ -248,13 +306,11 @@ if "Comparativo" in aba_selecionada:
             df_26_final = df_26_m
             titulo_grafico = f"Top Benefícios - {mes_selecionado} (2025 vs 2026)"
 
-        # Cálculos de Totais
         total_25 = df_25_final[col_real].sum()
         total_26 = df_26_final[col_real].sum()
         delta = total_26 - total_25
         delta_perc = (delta / total_25 * 100) if total_25 > 0 else 0
 
-        # KPIs
         st.markdown(f"### Resultados de **{mes_selecionado}**")
         k1, k2, k3 = st.columns(3)
         k1.metric("Realizado 2025", formatar_moeda(total_25))
@@ -264,7 +320,6 @@ if "Comparativo" in aba_selecionada:
 
         st.markdown("---")
         
-        # === GRÁFICO BARRAS AGRUPADAS ===
         view_25 = df_25_final.groupby(col_ben_25)[col_real].sum().reset_index()
         view_25.columns = ['Benefício', 'Valor']
         view_25['Ano'] = '2025'
@@ -302,7 +357,6 @@ if "Comparativo" in aba_selecionada:
             title=titulo_grafico
         )
         st.plotly_chart(fig, use_container_width=True)
-
 
 # === ORÇAMENTO x REALIZADO ===
 elif "Orçamento" in aba_selecionada:
