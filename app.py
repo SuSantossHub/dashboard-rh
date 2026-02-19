@@ -58,8 +58,13 @@ def set_png_as_page_bg(png_file):
             margin-bottom: 0px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 15px;
             flex-wrap: wrap; 
+        }
+        /* Estilo para as Abas (Tabs) ficarem mais visíveis */
+        button[data-baseweb="tab"] {
+            font-size: 16px !important;
+            font-weight: 600 !important;
         }
         </style>
         ''' % bin_str
@@ -185,6 +190,167 @@ if not check_password():
     st.stop()
 
 # ==============================================================================
+# FUNÇÃO: RENDERIZAR ABA DE ORÇAMENTO (Usada para as Tabs 2025 e 2026)
+# ==============================================================================
+def renderizar_aba_orcamento(ano, gid_atual):
+    df = load_data(gid_atual)
+    
+    if df is not None:
+        st.header(f"🎯 Orçamento de Benefícios {ano}")
+        
+        col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
+        col_real = achar_coluna(df, ["realizado", "executado", "soma"])
+        col_ben = achar_coluna(df, ["beneficio", "benefício"])
+        col_mes = achar_coluna(df, ["mês", "mes", "data"])
+
+        st.markdown("##### 🔍 Filtros de Visualização")
+        f1, f2 = st.columns(2)
+        df_filt = df.copy()
+        
+        # Adicionamos o `key` único com o ano para o Streamlit não dar conflito nas abas
+        if col_mes:
+            meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
+            sel_m = f1.multiselect("Filtrar por Mês:", meses, key=f"m_{ano}")
+            if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
+            
+        if col_ben:
+            bens = sorted(df[col_ben].astype(str).unique())
+            sel_b = f2.multiselect("Filtrar por Benefício:", bens, key=f"b_{ano}")
+            if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        realizado = df_filt[col_real].sum() if col_real else 0
+        BUDGET_ANUAL = 3432000.00
+        
+        saldo_diferenca = BUDGET_ANUAL - realizado
+        perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
+
+        cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Budget Mensal", "R$ 286.000,00")
+        c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
+        c3.metric("Realizado YTD", formatar_moeda(realizado))
+        c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
+        
+        st.markdown("---")
+        
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("Evolução Mensal")
+            if col_mes and col_real:
+                vars_p = []
+                if col_orc: vars_p.append(col_orc)
+                vars_p.append(col_real)
+                
+                df_c = df_filt.groupby(col_mes)[vars_p].sum().reset_index()
+                df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
+                df_c = df_c.sort_values('ordem')
+                
+                df_c['Mes_Clean'] = df_c[col_mes].apply(limpar_nome_mes)
+                
+                df_m = df_c.melt(id_vars=['Mes_Clean', 'ordem'], value_vars=vars_p, var_name="Tipo", value_name="Valor")
+                cores = {col_real: '#CC0000'}; 
+                if col_orc: cores[col_orc] = '#D3D3D3'
+                
+                fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
+                
+                fig.update_layout(
+                    template="plotly_white", 
+                    yaxis_tickprefix="R$ ", 
+                    xaxis_title="", 
+                    xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with g2:
+            st.subheader("Distribuição Estratégica do Investimento")
+            if col_ben and col_real:
+                df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
+                total_real = df_p[col_real].sum()
+                
+                if total_real > 0:
+                    df_p['Percentual'] = df_p[col_real] / total_real
+                    
+                    df_principais = df_p[df_p['Percentual'] >= 0.03].copy()
+                    df_menores = df_p[df_p['Percentual'] < 0.03]
+                    
+                    if not df_menores.empty:
+                        soma_outros = df_menores[col_real].sum()
+                        perc_outros = df_menores['Percentual'].sum()
+                        df_outros = pd.DataFrame([{col_ben: 'Outros Benefícios', col_real: soma_outros, 'Percentual': perc_outros}])
+                        df_final_p = pd.concat([df_principais, df_outros], ignore_index=True)
+                    else:
+                        df_final_p = df_principais
+                        
+                    df_final_p = df_final_p.sort_values(col_real, ascending=True)
+                    
+                    valor_maximo = df_final_p[df_final_p[col_ben] != 'Outros Benefícios'][col_real].max()
+                    
+                    def cor_estrategica(linha):
+                        if linha[col_ben] == 'Outros Benefícios': return '#808080' 
+                        if linha[col_real] == valor_maximo: return '#990000' 
+                        return '#ff4b4b' 
+                        
+                    df_final_p['Cor'] = df_final_p.apply(cor_estrategica, axis=1)
+                    
+                    df_final_p['Texto_Exibicao'] = df_final_p.apply(
+                        lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1
+                    )
+                    
+                    fig_p = px.bar(
+                        df_final_p, 
+                        y=col_ben, 
+                        x=col_real, 
+                        orientation='h', 
+                        text='Texto_Exibicao'
+                    )
+                    
+                    fig_p.update_traces(
+                        marker_color=df_final_p['Cor'],
+                        textposition='inside',
+                        insidetextanchor='middle',
+                        textfont=dict(color='white', size=13)
+                    )
+                    
+                    fig_p.update_layout(
+                        template="plotly_white",
+                        xaxis_visible=False, 
+                        yaxis_title="", 
+                        margin=dict(l=0, r=0, t=10, b=0),
+                        height=400
+                    )
+                    st.plotly_chart(fig_p, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("📑 Visão Matricial Detalhada")
+        if col_ben and col_mes and col_real:
+            try:
+                piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
+                piv = piv[sorted(piv.columns, key=get_mes_ordem)]
+                
+                piv.columns = [limpar_nome_mes(c) for c in piv.columns]
+                
+                piv["Total Anual"] = piv.sum(axis=1)
+                piv = piv.sort_values("Total Anual", ascending=False)
+                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
+                piv = pd.concat([piv, lin_tot.to_frame().T])
+                sty = piv.style.format("R$ {:,.2f}")
+                cols = [c for c in piv.columns if c != "Total Anual"]
+                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
+                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
+                def dest_total(s):
+                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
+                sty = sty.apply(dest_total, axis=1)
+                st.dataframe(sty, use_container_width=True)
+            except:
+                pass
+    else:
+        st.error(f"Não foi possível carregar os dados de {ano}.")
+
+
+# ==============================================================================
 # 🚀 CONTROLE DE NAVEGAÇÃO
 # ==============================================================================
 
@@ -200,11 +366,11 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
+# MUDANÇA AQUI: Reduzido para apenas 3 opções
 OPCOES_MENU = [
     "Início",
-    "Orçamento de Benefícios 2026",
-    "Orçamento de Benefícios 2025",
-    "Análise Financeira de Benefícios"
+    "Orçamento de Benefícios",
+    "Análise Financeira"
 ]
 
 st.sidebar.header("Navegação")
@@ -226,27 +392,39 @@ if aba_selecionada == "Início":
     logo_html = ""
     if os.path.exists("favicon.png"):
         logo_b64 = get_base64_of_bin_file("favicon.png")
-        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 40px;">'
+        # MUDANÇA AQUI: Logo aumentada de 40px para 65px
+        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 65px;">'
 
+    # MUDANÇA AQUI: O texto agora está dentro de uma tarja (background escuro elegante)
     st.markdown(f"""
-        <div style="border-left: 5px solid #ff4b4b; padding-left: 15px; margin-bottom: 30px;">
-            <h1 class="home-title">
+        <div style="background-color: #1e1e1e; padding: 35px; border-radius: 12px; border-left: 6px solid #ff4b4b; box-shadow: 0 4px 10px rgba(0,0,0,0.4); margin-bottom: 30px;">
+            <h1 class="home-title" style="color: white; margin-top: 0px;">
                 {logo_html} Benefits Platform
             </h1>
-            <h3 style="color: #4b4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 5px;">
+            <h3 style="color: #ff4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 10px;">
                 Bem-vindos ao V4 Benefits Intelligence Platform.
             </h3>
-            <p style="color: gray; font-size: 16px; max-width: 900px;">
+            <p style="color: #cccccc; font-size: 16px; max-width: 900px; margin-bottom: 0px;">
                 Plataforma estratégica para gestão e inteligência dos benefícios V4, reunindo orçamento, comparativos anuais e indicadores de performance em um único ambiente.
             </p>
         </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("Escolha a opção desejada para avançar.")
+    st.markdown("Escolha uma opção no menu lateral para avançar.")
 
+# === ORÇAMENTO (AGORA COM ABAS PARA 2026 e 2025) ===
+elif aba_selecionada == "Orçamento de Benefícios":
+    # MUDANÇA AQUI: Criação das Abas na interface principal
+    tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
+    
+    with tab_2026:
+        renderizar_aba_orcamento("2026", GID_2026)
+        
+    with tab_2025:
+        renderizar_aba_orcamento("2025", GID_2025)
 
 # === ANÁLISE FINANCEIRA ===
-elif "Análise Financeira" in aba_selecionada:
+elif aba_selecionada == "Análise Financeira":
     st.header("⚖️ Análise Financeira (Mês a Mês)")
     st.caption("Selecione o mês abaixo para comparar o desempenho exato entre 2025 e 2026.")
 
@@ -333,167 +511,3 @@ elif "Análise Financeira" in aba_selecionada:
             title=titulo_grafico
         )
         st.plotly_chart(fig, use_container_width=True)
-
-# === ORÇAMENTO x REALIZADO (2025 ou 2026) ===
-elif "Orçamento" in aba_selecionada:
-    gid_atual = GID_2026 if "2026" in aba_selecionada else GID_2025
-    df = load_data(gid_atual)
-    
-    if df is not None:
-        ano = "2026" if "2026" in aba_selecionada else "2025"
-        st.header(f"🎯 Orçamento de Benefícios {ano}")
-        
-        col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
-        col_real = achar_coluna(df, ["realizado", "executado", "soma"])
-        col_ben = achar_coluna(df, ["beneficio", "benefício"])
-        col_mes = achar_coluna(df, ["mês", "mes", "data"])
-
-        st.markdown("##### 🔍 Filtros de Visualização")
-        f1, f2 = st.columns(2)
-        df_filt = df.copy()
-        
-        if col_mes:
-            meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
-            sel_m = f1.multiselect("Filtrar por Mês:", meses)
-            if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
-            
-        if col_ben:
-            bens = sorted(df[col_ben].astype(str).unique())
-            sel_b = f2.multiselect("Filtrar por Benefício:", bens)
-            if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        realizado = df_filt[col_real].sum() if col_real else 0
-        BUDGET_ANUAL = 3432000.00
-        
-        saldo_diferenca = BUDGET_ANUAL - realizado
-        perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
-
-        # Lógica: Verde se estiver dentro do limite (<= 100%), Vermelho se estourar (> 100%)
-        cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Budget Mensal", "R$ 286.000,00")
-        c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
-        c3.metric("Realizado YTD", formatar_moeda(realizado))
-        c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
-        
-        st.markdown("---")
-        
-        g1, g2 = st.columns(2)
-        with g1:
-            st.subheader("Evolução Mensal")
-            if col_mes and col_real:
-                vars_p = []
-                if col_orc: vars_p.append(col_orc)
-                vars_p.append(col_real)
-                
-                df_c = df_filt.groupby(col_mes)[vars_p].sum().reset_index()
-                df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
-                df_c = df_c.sort_values('ordem')
-                
-                df_c['Mes_Clean'] = df_c[col_mes].apply(limpar_nome_mes)
-                
-                df_m = df_c.melt(id_vars=['Mes_Clean', 'ordem'], value_vars=vars_p, var_name="Tipo", value_name="Valor")
-                cores = {col_real: '#CC0000'}; 
-                if col_orc: cores[col_orc] = '#D3D3D3'
-                
-                fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
-                
-                fig.update_layout(
-                    template="plotly_white", 
-                    yaxis_tickprefix="R$ ", 
-                    xaxis_title="", 
-                    xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()}
-                )
-                st.plotly_chart(fig, use_container_width=True)
-        
-        with g2:
-            st.subheader("Distribuição Estratégica do Investimento") # Título atualizado
-            if col_ben and col_real:
-                df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
-                total_real = df_p[col_real].sum()
-                
-                if total_real > 0:
-                    # Calcula percentual de cada benefício
-                    df_p['Percentual'] = df_p[col_real] / total_real
-                    
-                    # Agrupa quem tem menos de 3% em "Outros Benefícios"
-                    df_principais = df_p[df_p['Percentual'] >= 0.03].copy()
-                    df_menores = df_p[df_p['Percentual'] < 0.03]
-                    
-                    if not df_menores.empty:
-                        soma_outros = df_menores[col_real].sum()
-                        perc_outros = df_menores['Percentual'].sum()
-                        df_outros = pd.DataFrame([{col_ben: 'Outros Benefícios', col_real: soma_outros, 'Percentual': perc_outros}])
-                        df_final_p = pd.concat([df_principais, df_outros], ignore_index=True)
-                    else:
-                        df_final_p = df_principais
-                        
-                    # Ordena: Ascendente (para que no gráfico de barras horizontais, o maior fique no TOPO)
-                    df_final_p = df_final_p.sort_values(col_real, ascending=True)
-                    
-                    # Lógica de Cores Premium (Maior = Dark Red, Outros = Neutral, Resto = V4 Red)
-                    valor_maximo = df_final_p[df_final_p[col_ben] != 'Outros Benefícios'][col_real].max()
-                    
-                    def cor_estrategica(linha):
-                        if linha[col_ben] == 'Outros Benefícios': return '#808080' # Cinza chumbo/neutro
-                        if linha[col_real] == valor_maximo: return '#990000' # Vermelho bem escuro pro maior
-                        return '#ff4b4b' # Vermelho V4 para os demais
-                        
-                    df_final_p['Cor'] = df_final_p.apply(cor_estrategica, axis=1)
-                    
-                    # Formata o texto exibido dentro das barras "R$ Xk (X%)"
-                    df_final_p['Texto_Exibicao'] = df_final_p.apply(
-                        lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1
-                    )
-                    
-                    fig_p = px.bar(
-                        df_final_p, 
-                        y=col_ben, 
-                        x=col_real, 
-                        orientation='h', 
-                        text='Texto_Exibicao'
-                    )
-                    
-                    fig_p.update_traces(
-                        marker_color=df_final_p['Cor'],
-                        textposition='inside',
-                        insidetextanchor='middle',
-                        textfont=dict(color='white', size=13)
-                    )
-                    
-                    fig_p.update_layout(
-                        template="plotly_white",
-                        xaxis_visible=False, # Some com o eixo X (o número já está na barra)
-                        yaxis_title="", # Some com a palavra "Benefício"
-                        margin=dict(l=0, r=0, t=10, b=0),
-                        height=400
-                    )
-                    
-                    st.plotly_chart(fig_p, use_container_width=True)
-
-        st.markdown("---")
-        st.subheader("📑 Visão Matricial Detalhada")
-        if col_ben and col_mes and col_real:
-            try:
-                piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
-                piv = piv[sorted(piv.columns, key=get_mes_ordem)]
-                
-                piv.columns = [limpar_nome_mes(c) for c in piv.columns]
-                
-                piv["Total Anual"] = piv.sum(axis=1)
-                piv = piv.sort_values("Total Anual", ascending=False)
-                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
-                piv = pd.concat([piv, lin_tot.to_frame().T])
-                sty = piv.style.format("R$ {:,.2f}")
-                cols = [c for c in piv.columns if c != "Total Anual"]
-                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
-                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
-                def dest_total(s):
-                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
-                sty = sty.apply(dest_total, axis=1)
-                st.dataframe(sty, use_container_width=True)
-            except:
-                pass
