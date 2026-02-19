@@ -51,7 +51,9 @@ def set_png_as_page_bg(png_file):
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
         
-        .stProgress > div > div > div > div { background-color: #ff4b4b; }
+        .stProgress > div > div > div > div {
+            background-color: #ff4b4b;
+        }
         .home-title {
             margin-bottom: 0px;
             display: flex;
@@ -59,6 +61,7 @@ def set_png_as_page_bg(png_file):
             gap: 15px;
             flex-wrap: wrap; 
         }
+        /* Estilo para as Abas (Tabs) ficarem mais visíveis */
         button[data-baseweb="tab"] {
             font-size: 16px !important;
             font-weight: 600 !important;
@@ -384,4 +387,123 @@ if aba_selecionada == "Início":
     
     logo_html = ""
     if os.path.exists("favicon.png"):
-        logo_b64 = get_base64_of_bin_file
+        logo_b64 = get_base64_of_bin_file("favicon.png")
+        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 65px;">'
+
+    st.markdown(f"""
+        <div style="background-color: #1e1e1e; padding: 35px; border-radius: 12px; border-left: 6px solid #ff4b4b; box-shadow: 0 4px 10px rgba(0,0,0,0.4); margin-bottom: 30px;">
+            <h1 class="home-title" style="color: white; margin-top: 0px;">
+                {logo_html} Benefits Platform
+            </h1>
+            <h3 style="color: #ff4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 10px;">
+                Bem-vindos ao V4 Benefits Intelligence Platform.
+            </h3>
+            <p style="color: #cccccc; font-size: 16px; max-width: 900px; margin-bottom: 0px;">
+                Plataforma estratégica para gestão e inteligência dos benefícios V4, reunindo orçamento, comparativos anuais e indicadores de performance em um único ambiente.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("Escolha uma opção no menu lateral para avançar.")
+
+# === ORÇAMENTO ===
+elif aba_selecionada == "Orçamento de Benefícios":
+    st.header("🎯 Orçamento de Benefícios")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
+    
+    with tab_2026:
+        renderizar_aba_orcamento("2026", GID_2026)
+        
+    with tab_2025:
+        renderizar_aba_orcamento("2025", GID_2025)
+
+# === ANÁLISE FINANCEIRA ===
+elif aba_selecionada == "Análise Financeira":
+    st.header("⚖️ Análise Financeira (Mês a Mês)")
+    st.caption("Selecione o mês abaixo para comparar o desempenho exato entre 2025 e 2026.")
+
+    with st.spinner("Carregando dados..."):
+        df_2025 = load_data(GID_2025)
+        df_2026 = load_data(GID_2026)
+    
+    if df_2025 is not None and df_2026 is not None:
+        col_real = achar_coluna(df_2025, ["realizado", "executado", "soma"])
+        col_mes_25 = achar_coluna(df_2025, ["mês", "mes", "data"])
+        col_mes_26 = achar_coluna(df_2026, ["mês", "mes", "data"])
+        col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
+        col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
+
+        f1, f2 = st.columns(2)
+        mes_selecionado = f1.selectbox("📅 Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
+        
+        ordem_mes_selecionado = get_mes_ordem(mes_selecionado)
+        df_25_m = df_2025[df_2025[col_mes_25].apply(get_mes_ordem) == ordem_mes_selecionado]
+        df_26_m = df_2026[df_2026[col_mes_26].apply(get_mes_ordem) == ordem_mes_selecionado]
+
+        bens_25 = df_25_m[col_ben_25].unique() if col_ben_25 else []
+        bens_26 = df_26_m[col_ben_26].unique() if col_ben_26 else []
+        todos_bens = sorted(list(set(bens_25) | set(bens_26)))
+        
+        sel_ben = f2.multiselect("🔍 Filtrar Benefícios (Opcional):", todos_bens)
+
+        if sel_ben:
+            df_25_final = df_25_m[df_25_m[col_ben_25].isin(sel_ben)]
+            df_26_final = df_26_m[df_26_m[col_ben_26].isin(sel_ben)]
+            titulo_grafico = f"Comparativo por Benefício - {mes_selecionado}"
+        else:
+            df_25_final = df_25_m
+            df_26_final = df_26_m
+            titulo_grafico = f"Top Benefícios - {mes_selecionado} (2025 vs 2026)"
+
+        total_25 = df_25_final[col_real].sum()
+        total_26 = df_26_final[col_real].sum()
+        delta = total_26 - total_25
+        delta_perc = (delta / total_25 * 100) if total_25 > 0 else 0
+
+        st.markdown(f"### Resultados de **{mes_selecionado}**")
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Realizado 2025", formatar_moeda(total_25))
+        k2.metric("Realizado 2026", formatar_moeda(total_26))
+        k3.metric("Diferença (R$)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
+
+        st.markdown("---")
+        
+        view_25 = df_25_final.groupby(col_ben_25)[col_real].sum().reset_index()
+        view_25.columns = ['Benefício', 'Valor']
+        view_25['Ano'] = '2025'
+        
+        view_26 = df_26_final.groupby(col_ben_26)[col_real].sum().reset_index()
+        view_26.columns = ['Benefício', 'Valor']
+        view_26['Ano'] = '2026'
+        
+        df_chart = pd.concat([view_25, view_26])
+        
+        if not sel_ben and len(df_chart['Benefício'].unique()) > 10:
+            top_bens = df_chart.groupby('Benefício')['Valor'].sum().nlargest(10).index
+            df_chart = df_chart[df_chart['Benefício'].isin(top_bens)]
+            st.caption("ℹ️ Mostrando os top 10 benefícios por valor. Use o filtro opcional para ver outros.")
+
+        df_chart = df_chart.sort_values('Valor', ascending=False)
+
+        fig = px.bar(
+            df_chart, 
+            x="Benefício", 
+            y="Valor", 
+            color="Ano", 
+            barmode="group", 
+            text_auto='.2s',
+            color_discrete_map={'2025': '#999999', '2026': '#CC0000'},
+            height=500
+        )
+        
+        fig.update_layout(
+            template="plotly_white",
+            yaxis_tickprefix="R$ ",
+            xaxis_title=None,
+            yaxis_title="Custo Realizado",
+            legend_title="Ano",
+            title=titulo_grafico
+        )
+        st.plotly_chart(fig, use_container_width=True)
