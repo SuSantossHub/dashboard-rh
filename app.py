@@ -51,9 +51,7 @@ def set_png_as_page_bg(png_file):
         .login-box h3 { font-size: 18px; color: #ff4b4b !important; margin-top: 0; font-weight: 500; margin-bottom: 20px; }
         .login-box p { font-size: 14px; color: #cccccc !important; }
         
-        .stProgress > div > div > div > div {
-            background-color: #ff4b4b;
-        }
+        .stProgress > div > div > div > div { background-color: #ff4b4b; }
         .home-title {
             margin-bottom: 0px;
             display: flex;
@@ -61,7 +59,6 @@ def set_png_as_page_bg(png_file):
             gap: 15px;
             flex-wrap: wrap; 
         }
-        /* Estilo para as Abas (Tabs) ficarem mais visíveis */
         button[data-baseweb="tab"] {
             font-size: 16px !important;
             font-weight: 600 !important;
@@ -252,6 +249,17 @@ def renderizar_aba_orcamento(ano, gid_atual):
                 if col_orc: cores[col_orc] = '#D3D3D3'
                 
                 fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
+                
+                # ADIÇÃO DA LINHA DE TENDÊNCIA AQUI
+                fig.add_scatter(
+                    x=df_c['Mes_Clean'],
+                    y=df_c[col_real],
+                    mode='lines+markers',
+                    name='Tendência (Sobe/Desce)',
+                    line=dict(color='#ffffff', width=2.5, shape='spline'), # Branco puro, linha suave
+                    marker=dict(size=8, color='#ffffff', line=dict(width=1, color='#000000')),
+                    showlegend=False
+                )
                 
                 fig.update_layout(
                     template="plotly_white", 
