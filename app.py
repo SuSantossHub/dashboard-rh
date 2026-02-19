@@ -4,6 +4,7 @@ import plotly.express as px
 import unicodedata
 import os
 import base64
+import numpy as np
 
 # ==============================================================================
 # 1. Configuração da Página
@@ -63,6 +64,8 @@ def set_png_as_page_bg(png_file):
             font-size: 16px !important;
             font-weight: 600 !important;
         }
+        /* Ajuste nas tabelas do ranking */
+        .dataframe { font-size: 14px !important; }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -106,7 +109,7 @@ def achar_coluna(df, termos):
                 return col_original
     return None
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def load_data(gid):
     SHEET_ID = "10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ"
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
@@ -187,7 +190,7 @@ if not check_password():
     st.stop()
 
 # ==============================================================================
-# FUNÇÃO: RENDERIZAR ABA DE ORÇAMENTO (Usada para as Tabs 2025 e 2026)
+# FUNÇÃO: RENDERIZAR ABA DE ORÇAMENTO
 # ==============================================================================
 def renderizar_aba_orcamento(ano, gid_atual):
     df = load_data(gid_atual)
@@ -219,7 +222,6 @@ def renderizar_aba_orcamento(ano, gid_atual):
         
         saldo_diferenca = BUDGET_ANUAL - realizado
         perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
-
         cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
 
         c1, c2, c3, c4 = st.columns(4)
@@ -234,39 +236,28 @@ def renderizar_aba_orcamento(ano, gid_atual):
         with g1:
             st.subheader("Evolução Mensal")
             if col_mes and col_real:
-                vars_p = []
-                if col_orc: vars_p.append(col_orc)
-                vars_p.append(col_real)
+                vars_p = [col_real]
+                if col_orc: vars_p.insert(0, col_orc)
                 
                 df_c = df_filt.groupby(col_mes)[vars_p].sum().reset_index()
                 df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
                 df_c = df_c.sort_values('ordem')
-                
                 df_c['Mes_Clean'] = df_c[col_mes].apply(limpar_nome_mes)
                 
                 df_m = df_c.melt(id_vars=['Mes_Clean', 'ordem'], value_vars=vars_p, var_name="Tipo", value_name="Valor")
-                cores = {col_real: '#CC0000'}; 
+                cores = {col_real: '#CC0000'}
                 if col_orc: cores[col_orc] = '#D3D3D3'
                 
                 fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
                 
-                # ADIÇÃO DA LINHA DE TENDÊNCIA AQUI
                 fig.add_scatter(
-                    x=df_c['Mes_Clean'],
-                    y=df_c[col_real],
-                    mode='lines+markers',
-                    name='Tendência (Sobe/Desce)',
-                    line=dict(color='#ffffff', width=2.5, shape='spline'), # Branco puro, linha suave
+                    x=df_c['Mes_Clean'], y=df_c[col_real], mode='lines+markers', name='Tendência',
+                    line=dict(color='#ffffff', width=2.5, shape='spline'), 
                     marker=dict(size=8, color='#ffffff', line=dict(width=1, color='#000000')),
                     showlegend=False
                 )
                 
-                fig.update_layout(
-                    template="plotly_white", 
-                    yaxis_tickprefix="R$ ", 
-                    xaxis_title="", 
-                    xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()}
-                )
+                fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title="", xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()})
                 st.plotly_chart(fig, use_container_width=True)
         
         with g2:
@@ -277,20 +268,16 @@ def renderizar_aba_orcamento(ano, gid_atual):
                 
                 if total_real > 0:
                     df_p['Percentual'] = df_p[col_real] / total_real
-                    
                     df_principais = df_p[df_p['Percentual'] >= 0.03].copy()
                     df_menores = df_p[df_p['Percentual'] < 0.03]
                     
                     if not df_menores.empty:
-                        soma_outros = df_menores[col_real].sum()
-                        perc_outros = df_menores['Percentual'].sum()
-                        df_outros = pd.DataFrame([{col_ben: 'Outros Benefícios', col_real: soma_outros, 'Percentual': perc_outros}])
+                        df_outros = pd.DataFrame([{col_ben: 'Outros Benefícios', col_real: df_menores[col_real].sum(), 'Percentual': df_menores['Percentual'].sum()}])
                         df_final_p = pd.concat([df_principais, df_outros], ignore_index=True)
                     else:
                         df_final_p = df_principais
                         
                     df_final_p = df_final_p.sort_values(col_real, ascending=True)
-                    
                     valor_maximo = df_final_p[df_final_p[col_ben] != 'Outros Benefícios'][col_real].max()
                     
                     def cor_estrategica(linha):
@@ -299,33 +286,11 @@ def renderizar_aba_orcamento(ano, gid_atual):
                         return '#ff4b4b' 
                         
                     df_final_p['Cor'] = df_final_p.apply(cor_estrategica, axis=1)
+                    df_final_p['Texto_Exibicao'] = df_final_p.apply(lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1)
                     
-                    df_final_p['Texto_Exibicao'] = df_final_p.apply(
-                        lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1
-                    )
-                    
-                    fig_p = px.bar(
-                        df_final_p, 
-                        y=col_ben, 
-                        x=col_real, 
-                        orientation='h', 
-                        text='Texto_Exibicao'
-                    )
-                    
-                    fig_p.update_traces(
-                        marker_color=df_final_p['Cor'],
-                        textposition='inside',
-                        insidetextanchor='middle',
-                        textfont=dict(color='white', size=13)
-                    )
-                    
-                    fig_p.update_layout(
-                        template="plotly_white",
-                        xaxis_visible=False, 
-                        yaxis_title="", 
-                        margin=dict(l=0, r=0, t=10, b=0),
-                        height=400
-                    )
+                    fig_p = px.bar(df_final_p, y=col_ben, x=col_real, orientation='h', text='Texto_Exibicao')
+                    fig_p.update_traces(marker_color=df_final_p['Cor'], textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=13))
+                    fig_p.update_layout(template="plotly_white", xaxis_visible=False, yaxis_title="", margin=dict(l=0, r=0, t=10, b=0), height=400)
                     st.plotly_chart(fig_p, use_container_width=True)
 
         st.markdown("---")
@@ -334,9 +299,7 @@ def renderizar_aba_orcamento(ano, gid_atual):
             try:
                 piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
                 piv = piv[sorted(piv.columns, key=get_mes_ordem)]
-                
                 piv.columns = [limpar_nome_mes(c) for c in piv.columns]
-                
                 piv["Total Anual"] = piv.sum(axis=1)
                 piv = piv.sort_values("Total Anual", ascending=False)
                 lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
@@ -345,14 +308,10 @@ def renderizar_aba_orcamento(ano, gid_atual):
                 cols = [c for c in piv.columns if c != "Total Anual"]
                 sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
                 sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
-                def dest_total(s):
-                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
-                sty = sty.apply(dest_total, axis=1)
+                sty = sty.apply(lambda s: ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s], axis=1)
                 st.dataframe(sty, use_container_width=True)
             except:
                 pass
-    else:
-        st.error(f"Não foi possível carregar os dados de {ano}.")
 
 
 # ==============================================================================
@@ -371,10 +330,14 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
+# 🔴 ATENÇÃO: COLOQUE AQUI O GID DA SUA ABA "Investidores V4"
+GID_INVESTIDORES = "" 
+
 OPCOES_MENU = [
     "Início",
     "Orçamento de Benefícios",
-    "Análise Financeira"
+    "Análise Financeira",
+    "Benefits Efficiency Map" # NOVO MENU
 ]
 
 st.sidebar.header("Navegação")
@@ -418,14 +381,9 @@ if aba_selecionada == "Início":
 elif aba_selecionada == "Orçamento de Benefícios":
     st.header("🎯 Orçamento de Benefícios")
     st.markdown("<br>", unsafe_allow_html=True)
-    
     tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
-    
-    with tab_2026:
-        renderizar_aba_orcamento("2026", GID_2026)
-        
-    with tab_2025:
-        renderizar_aba_orcamento("2025", GID_2025)
+    with tab_2026: renderizar_aba_orcamento("2026", GID_2026)
+    with tab_2025: renderizar_aba_orcamento("2025", GID_2025)
 
 # === ANÁLISE FINANCEIRA ===
 elif aba_selecionada == "Análise Financeira":
@@ -494,24 +452,139 @@ elif aba_selecionada == "Análise Financeira":
             st.caption("ℹ️ Mostrando os top 10 benefícios por valor. Use o filtro opcional para ver outros.")
 
         df_chart = df_chart.sort_values('Valor', ascending=False)
+        fig = px.bar(df_chart, x="Benefício", y="Valor", color="Ano", barmode="group", text_auto='.2s', color_discrete_map={'2025': '#999999', '2026': '#CC0000'}, height=500)
+        fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title=None, yaxis_title="Custo Realizado", legend_title="Ano", title=titulo_grafico)
+        st.plotly_chart(fig, use_container_width=True)
 
-        fig = px.bar(
-            df_chart, 
-            x="Benefício", 
-            y="Valor", 
-            color="Ano", 
-            barmode="group", 
-            text_auto='.2s',
-            color_discrete_map={'2025': '#999999', '2026': '#CC0000'},
-            height=500
+# === NOVA TELA: BENEFITS EFFICIENCY MAP ===
+elif aba_selecionada == "Benefits Efficiency Map":
+    st.header("🗺️ Benefits Efficiency Map")
+    st.caption("Visão estratégica de escala, custo e eficiência por investidor da rede.")
+
+    # Tenta carregar dados reais. Se o GID estiver vazio ou der erro, usa os dados simulados realistas.
+    df_inv = None
+    if GID_INVESTIDORES:
+        df_inv = load_data(GID_INVESTIDORES)
+
+    if df_inv is None or df_inv.empty:
+        # DADOS MOCK (Padrão Ouro McKinsey para você visualizar a ferramenta funcionando agora)
+        mock_data = {
+            "Investidor": ["V4 Paulista", "V4 Paulista", "V4 Rio", "V4 Rio", "V4 Rio", "V4 BH", "V4 BH", "V4 Sul", "V4 Sul", "V4 Norte", "V4 Leste", "V4 Leste", "V4 Leste", "V4 Centro", "V4 Oeste"],
+            "Tier": ["Tier 1", "Tier 1", "Tier 2", "Tier 2", "Tier 2", "Tier 1", "Tier 1", "Tier 3", "Tier 3", "Tier 2", "Tier 3", "Tier 3", "Tier 3", "Tier 1", "Tier 2"],
+            "Vidas": [45, 45, 20, 20, 20, 35, 35, 10, 10, 15, 8, 8, 8, 50, 18],
+            "Benefício": ["Saúde", "VR", "Saúde", "VR", "Dental", "Saúde", "Gympass", "Saúde", "VR", "Saúde", "Saúde", "VR", "Vida", "Saúde", "VR"],
+            "Custo": [19500, 12000, 12000, 6000, 500, 18000, 2000, 5000, 3000, 9000, 5500, 2500, 300, 22000, 7500]
+        }
+        df_inv = pd.DataFrame(mock_data)
+
+    # PROCESSAMENTO DE DADOS (Agrupando por Investidor)
+    df_agg = df_inv.groupby(['Investidor', 'Tier']).agg(
+        Vidas=('Vidas', 'max'),
+        Custo_Total=('Custo', 'sum'),
+        Qtd_Beneficios=('Benefício', 'count')
+    ).reset_index()
+    
+    df_agg['Per Capita'] = df_agg['Custo_Total'] / df_agg['Vidas']
+
+    # 🔷 1. KPI TOPO (Visão Executiva)
+    media_pc = df_agg['Per Capita'].mean()
+    std_pc = df_agg['Per Capita'].std()
+    maior_pc = df_agg['Per Capita'].max()
+    menor_pc = df_agg['Per Capita'].min()
+    total_vidas = df_agg['Vidas'].sum()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Per Capita Médio da Rede", formatar_moeda(media_pc))
+    c2.metric("Maior Per Capita 🔴", formatar_moeda(maior_pc))
+    c3.metric("Menor Per Capita 🟢", formatar_moeda(menor_pc))
+    c4.metric("Total Vidas Ativas 👥", int(total_vidas))
+
+    st.markdown("---")
+
+    # 🧠 Inteligência Automática (Flag de Eficiência / Outliers)
+    def classificar_eficiencia(val):
+        if val > media_pc + std_pc: return '🔴 Alto'
+        elif val < media_pc - std_pc: return '🟢 Eficiente'
+        return '🟡 Na Média'
+    
+    df_agg['Status'] = df_agg['Per Capita'].apply(classificar_eficiencia)
+
+    col_grafico, col_ranking = st.columns([6, 4])
+
+    # 🔷 2. GRÁFICO PRINCIPAL (Scatter Plot - O Coração do Dash)
+    with col_grafico:
+        st.markdown("##### 🎯 Escala vs. Eficiência (Matriz de Bolhas)")
+        st.caption("Tamanho da bolha: Custo Total. Bolhas no alto e à esquerda representam alerta de eficiência.")
+        
+        fig_scatter = px.scatter(
+            df_agg, 
+            x='Vidas', 
+            y='Per Capita', 
+            size='Custo_Total', 
+            color='Status',
+            hover_name='Investidor',
+            size_max=40,
+            color_discrete_map={'🔴 Alto': '#cc0000', '🟡 Na Média': '#ff4b4b', '🟢 Eficiente': '#2e7d32'}
         )
         
-        fig.update_layout(
-            template="plotly_white",
-            yaxis_tickprefix="R$ ",
-            xaxis_title=None,
-            yaxis_title="Custo Realizado",
-            legend_title="Ano",
-            title=titulo_grafico
+        # Adiciona a linha de média como referência visual (Benchmark)
+        fig_scatter.add_hline(y=media_pc, line_dash="dot", line_color="#ffffff", annotation_text="Média da Rede")
+        
+        fig_scatter.update_layout(template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0))
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # 🔷 3. RANKING INTELIGENTE (Top 10 Maiores Per Capita)
+    with col_ranking:
+        st.markdown("##### 🏆 Ranking: Top Maiores Per Capita")
+        
+        df_ranking = df_agg[['Investidor', 'Vidas', 'Custo_Total', 'Per Capita']].copy()
+        df_ranking = df_ranking.sort_values(by='Per Capita', ascending=False).head(10)
+        
+        # Formatação Visual da Tabela (Heatmap no Per Capita)
+        st.dataframe(
+            df_ranking.style.format({
+                'Custo_Total': 'R$ {:,.2f}',
+                'Per Capita': 'R$ {:,.2f}'
+            }).background_gradient(cmap='Reds', subset=['Per Capita']),
+            hide_index=True,
+            use_container_width=True,
+            height=450
         )
-        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # 🔷 4. DRILL-DOWN ELEGANTE (Investigação Individual)
+    st.markdown("##### 🔍 Drill-down Estratégico (Raio-X do Pacote)")
+    
+    lista_investidores = sorted(df_agg['Investidor'].unique())
+    investidor_selecionado = st.selectbox("Selecione um Investidor para detalhar os benefícios consumidos:", ["Selecione..."] + lista_investidores)
+
+    if investidor_selecionado != "Selecione...":
+        df_ind = df_inv[df_inv['Investidor'] == investidor_selecionado].copy()
+        dados_resumo = df_agg[df_agg['Investidor'] == investidor_selecionado].iloc[0]
+        
+        st.markdown(f"#### 📊 Dossiê: **{investidor_selecionado}**")
+        
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Status de Eficiência", dados_resumo['Status'])
+        r2.metric("Per Capita do Pacote", formatar_moeda(dados_resumo['Per Capita']))
+        r3.metric("Total Investido (Mês)", formatar_moeda(dados_resumo['Custo_Total']))
+        r4.metric("Vidas no Investidor", int(dados_resumo['Vidas']))
+
+        # Gráfico Horizontal de Composição
+        df_ind = df_ind.sort_values("Custo", ascending=True)
+        df_ind['Texto'] = df_ind['Custo'].apply(lambda x: formatar_moeda(x))
+        
+        fig_bar = px.bar(
+            df_ind, 
+            y="Benefício", 
+            x="Custo", 
+            orientation='h',
+            text='Texto',
+            title="Composição dos Custos por Benefício"
+        )
+        
+        fig_bar.update_traces(marker_color='#ff4b4b', textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=14))
+        fig_bar.update_layout(template="plotly_white", xaxis_visible=False, yaxis_title="", height=250, margin=dict(l=0, r=0, t=40, b=0))
+        
+        st.plotly_chart(fig_bar, use_container_width=True)
