@@ -196,7 +196,7 @@ def renderizar_aba_orcamento(ano, gid_atual):
     df = load_data(gid_atual)
     
     if df is not None:
-        st.header(f"🎯 Orçamento de Benefícios {ano}")
+        
         
         col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
         col_real = achar_coluna(df, ["realizado", "executado", "soma"])
@@ -413,6 +413,7 @@ if aba_selecionada == "Início":
     st.markdown("Escolha uma opção no menu lateral para avançar.")
 
 # === ORÇAMENTO (AGORA COM ABAS PARA 2026 e 2025) ===
+st.header(f"🎯 Orçamento de Benefícios {ano}")
 elif aba_selecionada == "Orçamento de Benefícios":
     # MUDANÇA AQUI: Criação das Abas na interface principal
     tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
