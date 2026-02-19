@@ -422,14 +422,15 @@ elif "Orçamento" in aba_selecionada:
                 fig_p.update_traces(
                     textposition='outside', 
                     textinfo='percent+label', 
-                    textfont=dict(color='white', size=14), 
+                    textfont=dict(color='white', size=12), # Fonte reduzida para caber melhor
                     pull=separacao,
                     marker=dict(line=dict(color='#ffffff', width=2))
                 )
                 
                 fig_p.update_layout(
                     showlegend=False,
-                    margin=dict(t=40, b=40, l=40, r=40) 
+                    height=450, # Fixada uma altura generosa
+                    margin=dict(t=80, b=80, l=80, r=80) # Margens maiores "apertam" a pizza pro meio
                 )
                 st.plotly_chart(fig_p, use_container_width=True)
 
