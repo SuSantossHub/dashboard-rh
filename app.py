@@ -220,7 +220,7 @@ if st.sidebar.button("Sair / Logout", use_container_width=True):
 # LÓGICA DAS VISUALIZAÇÕES
 # ------------------------------------------------------------------------------
 
-# === PÁGINA INICIAL (HOME EXECUTIVA ATUALIZADA) ===
+# === PÁGINA INICIAL ===
 if aba_selecionada == "Início":
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -262,7 +262,6 @@ elif "Análise Financeira" in aba_selecionada:
         col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
         col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
 
-        # FILTROS MOVIDOS PARA A PÁGINA PRINCIPAL
         f1, f2 = st.columns(2)
         mes_selecionado = f1.selectbox("📅 Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
         
@@ -311,7 +310,7 @@ elif "Análise Financeira" in aba_selecionada:
         if not sel_ben and len(df_chart['Benefício'].unique()) > 10:
             top_bens = df_chart.groupby('Benefício')['Valor'].sum().nlargest(10).index
             df_chart = df_chart[df_chart['Benefício'].isin(top_bens)]
-            st.caption("ℹ️ Mostrando os top 10 benefícios por valor. Use o filtro lateral para ver outros.")
+            st.caption("ℹ️ Mostrando os top 10 benefícios por valor. Use o filtro opcional para ver outros.")
 
         df_chart = df_chart.sort_values('Valor', ascending=False)
 
@@ -350,19 +349,18 @@ elif "Orçamento" in aba_selecionada:
         col_ben = achar_coluna(df, ["beneficio", "benefício"])
         col_mes = achar_coluna(df, ["mês", "mes", "data"])
 
-        # FILTROS MOVIDOS PARA A PÁGINA PRINCIPAL (Sem Sidebar)
         st.markdown("##### 🔍 Filtros de Visualização")
         f1, f2 = st.columns(2)
         df_filt = df.copy()
         
         if col_mes:
             meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
-            sel_m = f1.multiselect("Filtrar por Mês:", meses, default=meses)
+            sel_m = f1.multiselect("Filtrar por Mês:", meses)
             if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
             
         if col_ben:
             bens = sorted(df[col_ben].astype(str).unique())
-            sel_b = f2.multiselect("Filtrar por Benefício:", bens, default=bens)
+            sel_b = f2.multiselect("Filtrar por Benefício:", bens)
             if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -370,17 +368,20 @@ elif "Orçamento" in aba_selecionada:
         realizado = df_filt[col_real].sum() if col_real else 0
         BUDGET_ANUAL = 3432000.00
         
-        # O Saldo é a diferença financeira real (Budget - Realizado)
         saldo_diferenca = BUDGET_ANUAL - realizado
         perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
+
+        # Lógica inteligente de cor do delta: 
+        # "normal" = verde (porque é positivo), "inverse" = vermelho (quando estoura > 100%)
+        cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Budget Mensal", "R$ 286.000,00")
         c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
         c3.metric("Realizado YTD", formatar_moeda(realizado))
         
-        # MUDANÇA: Exibe o valor do saldo em reais e o percentual em baixo (na formatação padrão do Delta)
-        c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca), delta=f"{perc_uso*100:.1f}% consumido", delta_color="off")
+        # O delta_color dinâmico garantirá Verde até 100% e Vermelho acima
+        c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
         
         st.markdown("---")
         
@@ -396,7 +397,6 @@ elif "Orçamento" in aba_selecionada:
                 df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
                 df_c = df_c.sort_values('ordem')
                 
-                # MUDANÇA: Limpa a string do mês para mostrar apenas a abreviação no eixo X
                 df_c['Mes_Clean'] = df_c[col_mes].apply(limpar_nome_mes)
                 
                 df_m = df_c.melt(id_vars=['Mes_Clean', 'ordem'], value_vars=vars_p, var_name="Tipo", value_name="Valor")
@@ -408,7 +408,7 @@ elif "Orçamento" in aba_selecionada:
                 fig.update_layout(
                     template="plotly_white", 
                     yaxis_tickprefix="R$ ", 
-                    xaxis_title="", # Remove o título do eixo X para ficar limpo
+                    xaxis_title="", 
                     xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()}
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -419,23 +419,21 @@ elif "Orçamento" in aba_selecionada:
                 df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
                 df_p = df_p.sort_values(col_real, ascending=False)
                 
-                # MUDANÇA: Removido o buraco (hole=0) para virar pizza real, com "fatias separadas" (pull) e texto visível fora.
                 fig_p = px.pie(df_p, values=col_real, names=col_ben, color_discrete_sequence=px.colors.sequential.Reds_r)
                 
-                # Cria um efeito 3D separando as fatias
                 separacao = [0.05] * len(df_p) if len(df_p) > 0 else []
                 
                 fig_p.update_traces(
-                    textposition='outside', # Texto fora para nunca ficar escondido
+                    textposition='outside', 
                     textinfo='percent+label', 
-                    textfont=dict(color='black', size=13),
+                    textfont=dict(color='white', size=14), 
                     pull=separacao,
                     marker=dict(line=dict(color='#ffffff', width=2))
                 )
                 
                 fig_p.update_layout(
                     showlegend=False,
-                    margin=dict(t=40, b=40, l=40, r=40) # Margem extra para caber os textos fora
+                    margin=dict(t=40, b=40, l=40, r=40) 
                 )
                 st.plotly_chart(fig_p, use_container_width=True)
 
@@ -446,20 +444,4 @@ elif "Orçamento" in aba_selecionada:
                 piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
                 piv = piv[sorted(piv.columns, key=get_mes_ordem)]
                 
-                # Renomeia as colunas da tabela para ficar bonito também
-                piv.columns = [limpar_nome_mes(c) for c in piv.columns]
-                
-                piv["Total Anual"] = piv.sum(axis=1)
-                piv = piv.sort_values("Total Anual", ascending=False)
-                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
-                piv = pd.concat([piv, lin_tot.to_frame().T])
-                sty = piv.style.format("R$ {:,.2f}")
-                cols = [c for c in piv.columns if c != "Total Anual"]
-                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
-                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
-                def dest_total(s):
-                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
-                sty = sty.apply(dest_total, axis=1)
-                st.dataframe(sty, use_container_width=True)
-            except:
-                pass
+                piv.columns = [limpar_nome_mes(c) for c in piv.columns
