@@ -90,7 +90,6 @@ def get_mes_ordem(nome_mes):
     return MAPA_MESES.get(str(nome_mes).lower()[:3], 99)
 
 def limpar_nome_mes(nome_sujo):
-    """Limpa strings como 'jan./2026' para retornar apenas 'Jan'."""
     try:
         return str(nome_sujo).split('.')[0].split('/')[0].capitalize()[:3]
     except:
@@ -371,6 +370,7 @@ elif "Orçamento" in aba_selecionada:
         saldo_diferenca = BUDGET_ANUAL - realizado
         perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
 
+        # Lógica: Verde se estiver dentro do limite (<= 100%), Vermelho se estourar (> 100%)
         cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
 
         c1, c2, c3, c4 = st.columns(4)
@@ -410,29 +410,69 @@ elif "Orçamento" in aba_selecionada:
                 st.plotly_chart(fig, use_container_width=True)
         
         with g2:
-            st.subheader("Share por Benefício")
+            st.subheader("Distribuição Estratégica do Investimento") # Título atualizado
             if col_ben and col_real:
                 df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
-                df_p = df_p.sort_values(col_real, ascending=False)
+                total_real = df_p[col_real].sum()
                 
-                fig_p = px.pie(df_p, values=col_real, names=col_ben, color_discrete_sequence=px.colors.sequential.Reds_r)
-                
-                separacao = [0.05] * len(df_p) if len(df_p) > 0 else []
-                
-                fig_p.update_traces(
-                    textposition='outside', 
-                    textinfo='percent+label', 
-                    textfont=dict(color='white', size=12), # Fonte reduzida para caber melhor
-                    pull=separacao,
-                    marker=dict(line=dict(color='#ffffff', width=2))
-                )
-                
-                fig_p.update_layout(
-                    showlegend=False,
-                    height=450, # Fixada uma altura generosa
-                    margin=dict(t=80, b=80, l=80, r=80) # Margens maiores "apertam" a pizza pro meio
-                )
-                st.plotly_chart(fig_p, use_container_width=True)
+                if total_real > 0:
+                    # Calcula percentual de cada benefício
+                    df_p['Percentual'] = df_p[col_real] / total_real
+                    
+                    # Agrupa quem tem menos de 3% em "Outros Benefícios"
+                    df_principais = df_p[df_p['Percentual'] >= 0.03].copy()
+                    df_menores = df_p[df_p['Percentual'] < 0.03]
+                    
+                    if not df_menores.empty:
+                        soma_outros = df_menores[col_real].sum()
+                        perc_outros = df_menores['Percentual'].sum()
+                        df_outros = pd.DataFrame([{col_ben: 'Outros Benefícios', col_real: soma_outros, 'Percentual': perc_outros}])
+                        df_final_p = pd.concat([df_principais, df_outros], ignore_index=True)
+                    else:
+                        df_final_p = df_principais
+                        
+                    # Ordena: Ascendente (para que no gráfico de barras horizontais, o maior fique no TOPO)
+                    df_final_p = df_final_p.sort_values(col_real, ascending=True)
+                    
+                    # Lógica de Cores Premium (Maior = Dark Red, Outros = Neutral, Resto = V4 Red)
+                    valor_maximo = df_final_p[df_final_p[col_ben] != 'Outros Benefícios'][col_real].max()
+                    
+                    def cor_estrategica(linha):
+                        if linha[col_ben] == 'Outros Benefícios': return '#808080' # Cinza chumbo/neutro
+                        if linha[col_real] == valor_maximo: return '#990000' # Vermelho bem escuro pro maior
+                        return '#ff4b4b' # Vermelho V4 para os demais
+                        
+                    df_final_p['Cor'] = df_final_p.apply(cor_estrategica, axis=1)
+                    
+                    # Formata o texto exibido dentro das barras "R$ Xk (X%)"
+                    df_final_p['Texto_Exibicao'] = df_final_p.apply(
+                        lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1
+                    )
+                    
+                    fig_p = px.bar(
+                        df_final_p, 
+                        y=col_ben, 
+                        x=col_real, 
+                        orientation='h', 
+                        text='Texto_Exibicao'
+                    )
+                    
+                    fig_p.update_traces(
+                        marker_color=df_final_p['Cor'],
+                        textposition='inside',
+                        insidetextanchor='middle',
+                        textfont=dict(color='white', size=13)
+                    )
+                    
+                    fig_p.update_layout(
+                        template="plotly_white",
+                        xaxis_visible=False, # Some com o eixo X (o número já está na barra)
+                        yaxis_title="", # Some com a palavra "Benefício"
+                        margin=dict(l=0, r=0, t=10, b=0),
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_p, use_container_width=True)
 
         st.markdown("---")
         st.subheader("📑 Visão Matricial Detalhada")
