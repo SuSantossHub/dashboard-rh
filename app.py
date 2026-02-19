@@ -371,16 +371,12 @@ elif "Orçamento" in aba_selecionada:
         saldo_diferenca = BUDGET_ANUAL - realizado
         perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
 
-        # Lógica inteligente de cor do delta: 
-        # "normal" = verde (porque é positivo), "inverse" = vermelho (quando estoura > 100%)
         cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Budget Mensal", "R$ 286.000,00")
         c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
         c3.metric("Realizado YTD", formatar_moeda(realizado))
-        
-        # O delta_color dinâmico garantirá Verde até 100% e Vermelho acima
         c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
         
         st.markdown("---")
@@ -444,4 +440,19 @@ elif "Orçamento" in aba_selecionada:
                 piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
                 piv = piv[sorted(piv.columns, key=get_mes_ordem)]
                 
-                piv.columns = [limpar_nome_mes(c) for c in piv.columns
+                piv.columns = [limpar_nome_mes(c) for c in piv.columns]
+                
+                piv["Total Anual"] = piv.sum(axis=1)
+                piv = piv.sort_values("Total Anual", ascending=False)
+                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
+                piv = pd.concat([piv, lin_tot.to_frame().T])
+                sty = piv.style.format("R$ {:,.2f}")
+                cols = [c for c in piv.columns if c != "Total Anual"]
+                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
+                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
+                def dest_total(s):
+                    return ['background-color: #d3d3d3; color: black; font-weight: bold' if s.name == 'TOTAL GERAL' else '' for _ in s]
+                sty = sty.apply(dest_total, axis=1)
+                st.dataframe(sty, use_container_width=True)
+            except:
+                pass
