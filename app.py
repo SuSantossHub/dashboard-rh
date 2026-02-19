@@ -196,29 +196,26 @@ def renderizar_aba_orcamento(ano, gid_atual):
     df = load_data(gid_atual)
     
     if df is not None:
+        # Título removido daqui. Agora fica acima das abas.
         
-        
-        col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
-        col_real = achar_coluna(df, ["realizado", "executado", "soma"])
-        col_ben = achar_coluna(df, ["beneficio", "benefício"])
-        col_mes = achar_coluna(df, ["mês", "mes", "data"])
-
         st.markdown("##### 🔍 Filtros de Visualização")
         f1, f2 = st.columns(2)
         df_filt = df.copy()
         
-        # Adicionamos o `key` único com o ano para o Streamlit não dar conflito nas abas
-        if col_mes:
+        if col_mes := achar_coluna(df, ["mês", "mes", "data"]):
             meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
             sel_m = f1.multiselect("Filtrar por Mês:", meses, key=f"m_{ano}")
             if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
             
-        if col_ben:
+        if col_ben := achar_coluna(df, ["beneficio", "benefício"]):
             bens = sorted(df[col_ben].astype(str).unique())
             sel_b = f2.multiselect("Filtrar por Benefício:", bens, key=f"b_{ano}")
             if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
 
         st.markdown("<br>", unsafe_allow_html=True)
+
+        col_real = achar_coluna(df, ["realizado", "executado", "soma"])
+        col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
 
         realizado = df_filt[col_real].sum() if col_real else 0
         BUDGET_ANUAL = 3432000.00
@@ -366,7 +363,6 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# MUDANÇA AQUI: Reduzido para apenas 3 opções
 OPCOES_MENU = [
     "Início",
     "Orçamento de Benefícios",
@@ -392,10 +388,8 @@ if aba_selecionada == "Início":
     logo_html = ""
     if os.path.exists("favicon.png"):
         logo_b64 = get_base64_of_bin_file("favicon.png")
-        # MUDANÇA AQUI: Logo aumentada de 40px para 65px
         logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 65px;">'
 
-    # MUDANÇA AQUI: O texto agora está dentro de uma tarja (background escuro elegante)
     st.markdown(f"""
         <div style="background-color: #1e1e1e; padding: 35px; border-radius: 12px; border-left: 6px solid #ff4b4b; box-shadow: 0 4px 10px rgba(0,0,0,0.4); margin-bottom: 30px;">
             <h1 class="home-title" style="color: white; margin-top: 0px;">
@@ -412,10 +406,12 @@ if aba_selecionada == "Início":
     
     st.markdown("Escolha uma opção no menu lateral para avançar.")
 
-# === ORÇAMENTO (AGORA COM ABAS PARA 2026 e 2025) ===
-st.header(f"🎯 Orçamento de Benefícios {ano}")
+# === ORÇAMENTO ===
 elif aba_selecionada == "Orçamento de Benefícios":
-    # MUDANÇA AQUI: Criação das Abas na interface principal
+    # MUDANÇA: Título fixo movido para FORA das abas, garantindo que apareça no topo de tudo
+    st.header("🎯 Orçamento de Benefícios")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
     
     with tab_2026:
