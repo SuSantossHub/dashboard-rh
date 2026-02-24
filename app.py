@@ -64,16 +64,8 @@ def set_png_as_page_bg(png_file):
             font-size: 16px !important;
             font-weight: 600 !important;
         }
-        .ben-tag {
-            display: inline-block;
-            background-color: #333333;
-            color: white;
-            padding: 5px 12px;
-            border-radius: 20px;
-            margin: 4px;
-            font-size: 13px;
-            border: 1px solid #555;
-        }
+        /* Ajuste nas tabelas do ranking */
+        .dataframe { font-size: 14px !important; }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -93,13 +85,9 @@ def remover_acentos(texto):
     except:
         return str(texto).lower()
 
-MAPA_MESES = {'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-              'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12}
-
-LISTA_MESES_EXTENSO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
-                       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
-
 def get_mes_ordem(nome_mes):
+    MAPA_MESES = {'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
+                  'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12}
     return MAPA_MESES.get(str(nome_mes).lower()[:3], 99)
 
 def limpar_nome_mes(nome_sujo):
@@ -126,7 +114,7 @@ def load_data(gid):
     except:
         return None
 
-    termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum"]
+    termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum", "mensalidade", "coparticipacao"]
     for col in df.columns:
         col_norm = remover_acentos(col)
         eh_financeiro = any(remover_acentos(t) in col_norm for t in termos_financeiros)
@@ -338,7 +326,7 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# 🔴🔴🔴 INSIRA AQUI OS GIDs DAS ABAS WYDEN E EP (Pegue da URL da planilha de edição) 🔴🔴🔴
+# 🔴🔴🔴 INSIRA AQUI OS GIDs DAS ABAS WYDEN E EP 🔴🔴🔴
 GID_WYDEN = "" 
 GID_EP = "" 
 
@@ -476,112 +464,142 @@ elif aba_selecionada == "Benefits Efficiency Map":
     
     df_unificado = pd.DataFrame()
     
-    # Processa Wyden
     if df_wyden is not None:
         df_wyden['Origem'] = 'Wyden'
         df_unificado = pd.concat([df_unificado, df_wyden])
-        
-    # Processa EP
     if df_ep is not None:
         df_ep['Origem'] = 'EP'
         df_unificado = pd.concat([df_unificado, df_ep])
 
-    # Se não tiver dados reais, avisa. Se tiver, processa.
-    if not df_unificado.empty:
-        # Tenta identificar colunas automaticamente
+    # SE NÃO TIVER DADOS, USA O MOCK BONITO (Padrão Ouro McKinsey)
+    if df_unificado.empty:
+        if not GID_WYDEN and not GID_EP:
+            st.info("ℹ️ Exibindo dados simulados. Para visualizar os dados reais, insira os GIDs das abas 'Wyden' e 'EP' no código.")
+        
+        # MOCK DATA PREMIUM
+        mock_data = {
+            "Investidor": ["V4 Paulista", "V4 Paulista", "V4 Rio", "V4 Rio", "V4 Rio", "V4 BH", "V4 BH", "V4 Sul", "V4 Sul", "V4 Norte", "V4 Leste", "V4 Leste", "V4 Leste", "V4 Centro", "V4 Oeste"],
+            "Unidade": ["Paulista Matriz", "Paulista Matriz", "Rio Copacabana", "Rio Copacabana", "Rio Copacabana", "BH Savassi", "BH Savassi", "Sul Gramado", "Sul Gramado", "Norte Manaus", "Leste Mooca", "Leste Mooca", "Leste Mooca", "Centro Brasília", "Oeste Osasco"],
+            "Regional": ["SP Capital", "SP Capital", "RJ Capital", "RJ Capital", "RJ Capital", "MG Capital", "MG Capital", "RS Serra", "RS Serra", "AM Capital", "SP Capital", "SP Capital", "SP Capital", "DF", "SP Grande SP"],
+            "Benefício": ["Saúde", "VR", "Saúde", "VR", "Dental", "Saúde", "Gympass", "Saúde", "VR", "Saúde", "Saúde", "VR", "Vida", "Saúde", "VR"],
+            "Custo": [19500, 12000, 12000, 6000, 500, 18000, 2000, 5000, 3000, 9000, 5500, 2500, 300, 22000, 7500],
+            "Vidas_Mock": [45, 45, 20, 20, 20, 35, 35, 10, 10, 15, 8, 8, 8, 50, 18] # Apenas para simulação
+        }
+        df_unificado = pd.DataFrame(mock_data)
+        col_investidor = "Investidor"
+        col_unidade = "Unidade"
+        col_regional = "Regional"
+        col_custo = "Custo"
+        col_beneficio = "Benefício"
+        # No mock, usamos uma coluna explicita de vidas para simplificar a agregação
+        df_agg = df_unificado.groupby([col_investidor, col_unidade, col_regional]).agg(
+            Vidas=('Vidas_Mock', 'max'), 
+            Custo_Total=(col_custo, 'sum')
+        ).reset_index()
+    else:
+        # LÓGICA PARA DADOS REAIS
         col_investidor = achar_coluna(df_unificado, ["investidor", "dono", "sócio", "nome"]) 
         col_unidade = achar_coluna(df_unificado, ["unidade", "franquia", "loja"])
         col_regional = achar_coluna(df_unificado, ["regional", "região", "estado", "uf"])
         col_custo = achar_coluna(df_unificado, ["valor", "custo", "preço", "mensalidade"])
         col_beneficio = achar_coluna(df_unificado, ["beneficio", "produto", "plano"])
         
-        # Filtros no Topo
-        st.markdown("##### 🔍 Filtros Estratégicos")
-        f1, f2, f3 = st.columns(3)
-        
-        filtro_regional = []
-        if col_regional:
-            regionais = sorted(df_unificado[col_regional].astype(str).unique())
-            filtro_regional = f1.multiselect("Filtrar Regional:", regionais)
-            if filtro_regional: df_unificado = df_unificado[df_unificado[col_regional].isin(filtro_regional)]
-            
-        filtro_unidade = []
-        if col_unidade:
-            unidades = sorted(df_unificado[col_unidade].astype(str).unique())
-            filtro_unidade = f2.multiselect("Filtrar Unidade:", unidades)
-            if filtro_unidade: df_unificado = df_unificado[df_unificado[col_unidade].isin(filtro_unidade)]
-            
-        filtro_investidor = []
-        if col_investidor:
-            investidores = sorted(df_unificado[col_investidor].astype(str).unique())
-            filtro_investidor = f3.multiselect("Filtrar Investidor:", investidores)
-            if filtro_investidor: df_unificado = df_unificado[df_unificado[col_investidor].isin(filtro_investidor)]
-
-        st.markdown("---")
-
-        # Agregação para o Gráfico de Bolhas (Por Investidor/Unidade)
-        # Assume que cada linha é uma vida se não tiver coluna 'Vidas' explícita
         groupby_cols = [c for c in [col_investidor, col_unidade, col_regional] if c]
-        
         if groupby_cols and col_custo:
             df_agg = df_unificado.groupby(groupby_cols).agg(
                 Vidas=(col_custo, 'count'), # Conta linhas como vidas
                 Custo_Total=(col_custo, 'sum')
             ).reset_index()
-            
-            df_agg['Per Capita'] = df_agg['Custo_Total'] / df_agg['Vidas']
-            
-            # --- KPIs ---
-            media_pc = df_agg['Per Capita'].mean()
-            std_pc = df_agg['Per Capita'].std()
-            maior_pc = df_agg['Per Capita'].max()
-            menor_pc = df_agg['Per Capita'].min()
-            total_vidas = df_agg['Vidas'].sum()
+        else:
+            st.error("Colunas essenciais não encontradas na planilha.")
+            st.stop()
 
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Per Capita Médio", formatar_moeda(media_pc))
-            c2.metric("Maior Per Capita 🔴", formatar_moeda(maior_pc))
-            c3.metric("Menor Per Capita 🟢", formatar_moeda(menor_pc))
-            c4.metric("Vidas Filtradas 👥", int(total_vidas))
+    # --- RENDERIZAÇÃO DO DASHBOARD PREMIUM (COMUM PARA MOCK E REAL) ---
+    
+    # Filtros no Topo
+    st.markdown("##### 🔍 Filtros Estratégicos")
+    f1, f2, f3 = st.columns(3)
+    
+    df_filtered = df_agg.copy()
+    
+    if col_regional in df_agg.columns:
+        regionais = sorted(df_agg[col_regional].unique())
+        sel_reg = f1.multiselect("Regional:", regionais)
+        if sel_reg: df_filtered = df_filtered[df_filtered[col_regional].isin(sel_reg)]
+        
+    if col_unidade in df_agg.columns:
+        unidades = sorted(df_filtered[col_unidade].unique())
+        sel_uni = f2.multiselect("Unidade:", unidades)
+        if sel_uni: df_filtered = df_filtered[df_filtered[col_unidade].isin(sel_uni)]
+        
+    if col_investidor in df_agg.columns:
+        investidores = sorted(df_filtered[col_investidor].unique())
+        sel_inv = f3.multiselect("Investidor:", investidores)
+        if sel_inv: df_filtered = df_filtered[df_filtered[col_investidor].isin(sel_inv)]
 
-            # Classificação de Eficiência
-            def classificar(val):
-                if val > media_pc + std_pc: return '🔴 Alto'
-                elif val < media_pc - std_pc: return '🟢 Eficiente'
-                return '🟡 Na Média'
-            
-            df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
+    st.markdown("---")
 
-            # Scatter Plot
-            col_grafico, col_ranking = st.columns([6, 4])
-            with col_grafico:
-                st.markdown("##### 🎯 Escala vs. Eficiência")
-                eixo_x = col_unidade if col_unidade else col_investidor
-                hover_data = [col_regional] if col_regional else []
-                
-                fig_scatter = px.scatter(
-                    df_agg, x='Vidas', y='Per Capita', size='Custo_Total', color='Status',
-                    hover_name=eixo_x, hover_data=hover_data, size_max=40,
-                    color_discrete_map={'🔴 Alto': '#cc0000', '🟡 Na Média': '#ff4b4b', '🟢 Eficiente': '#2e7d32'}
-                )
-                fig_scatter.add_hline(y=media_pc, line_dash="dot", line_color="#ffffff", annotation_text="Média")
-                fig_scatter.update_layout(template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig_scatter, use_container_width=True)
+    # Cálculos Finais
+    df_filtered['Per Capita'] = df_filtered['Custo_Total'] / df_filtered['Vidas']
+    
+    media_pc = df_filtered['Per Capita'].mean()
+    std_pc = df_filtered['Per Capita'].std() if len(df_filtered) > 1 else 0
+    maior_pc = df_filtered['Per Capita'].max()
+    menor_pc = df_filtered['Per Capita'].min()
+    total_vidas = df_filtered['Vidas'].sum()
 
-            with col_ranking:
-                st.markdown("##### 🏆 Ranking: Top Per Capita")
-                cols_show = [c for c in [col_investidor, col_unidade, 'Vidas', 'Custo_Total', 'Per Capita'] if c]
-                df_ranking = df_agg[cols_show].sort_values(by='Per Capita', ascending=False).head(10)
-                st.dataframe(df_ranking.style.format({'Custo_Total': 'R$ {:,.2f}', 'Per Capita': 'R$ {:,.2f}'}).background_gradient(cmap='Reds', subset=['Per Capita']), hide_index=True, use_container_width=True, height=450)
+    # KPIs
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Per Capita Médio", formatar_moeda(media_pc))
+    c2.metric("Maior Per Capita 🔴", formatar_moeda(maior_pc))
+    c3.metric("Menor Per Capita 🟢", formatar_moeda(menor_pc))
+    c4.metric("Vidas Filtradas 👥", int(total_vidas))
 
-    else:
-        st.info("ℹ️ Para visualizar este mapa, insira os GIDs das abas 'Wyden' e 'EP' no código.")
-        # Mantém o Mock para não ficar vazio enquanto não configura
-        mock_data = {
-            "Investidor": ["V4 Paulista", "V4 Rio", "V4 BH", "V4 Sul", "V4 Norte"],
-            "Vidas": [45, 20, 35, 10, 15],
-            "Custo Total": [19500, 12500, 18000, 3000, 9000]
-        }
-        df_mock = pd.DataFrame(mock_data)
-        df_mock['Per Capita'] = df_mock['Custo Total'] / df_mock['Vidas']
-        st.dataframe(df_mock.style.format({'Custo Total': 'R$ {:,.2f}', 'Per Capita': 'R$ {:,.2f}'}), use_container_width=True)
+    # Classificação Automática
+    def classificar(val):
+        if val > media_pc + std_pc: return '🔴 Alto'
+        elif val < media_pc - std_pc: return '🟢 Eficiente'
+        return '🟡 Na Média'
+    
+    df_filtered['Status'] = df_filtered['Per Capita'].apply(classificar)
+
+    # Scatter Plot + Ranking
+    col_grafico, col_ranking = st.columns([6, 4])
+    
+    with col_grafico:
+        st.markdown("##### 🎯 Escala vs. Eficiência")
+        eixo_name = col_unidade if col_unidade in df_filtered.columns else col_investidor
+        
+        fig_scatter = px.scatter(
+            df_filtered, x='Vidas', y='Per Capita', size='Custo_Total', color='Status',
+            hover_name=eixo_name, size_max=40,
+            color_discrete_map={'🔴 Alto': '#cc0000', '🟡 Na Média': '#ff4b4b', '🟢 Eficiente': '#2e7d32'}
+        )
+        fig_scatter.add_hline(y=media_pc, line_dash="dot", line_color="#ffffff", annotation_text="Média")
+        fig_scatter.update_layout(template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0))
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+    with col_ranking:
+        st.markdown("##### 🏆 Ranking: Top Per Capita")
+        cols_table = [c for c in [col_investidor, col_unidade, 'Vidas', 'Custo_Total', 'Per Capita'] if c in df_filtered.columns]
+        df_ranking = df_filtered[cols_table].sort_values(by='Per Capita', ascending=False).head(10)
+        st.dataframe(df_ranking.style.format({'Custo_Total': 'R$ {:,.2f}', 'Per Capita': 'R$ {:,.2f}'}).background_gradient(cmap='Reds', subset=['Per Capita']), hide_index=True, use_container_width=True, height=450)
+
+    # Drill-down
+    st.markdown("---")
+    st.markdown("##### 🔍 Drill-down (Raio-X do Investidor)")
+    lista_inv_dd = sorted(df_filtered[col_investidor].unique())
+    inv_sel = st.selectbox("Selecione para detalhar:", ["Selecione..."] + lista_inv_dd)
+
+    if inv_sel != "Selecione...":
+        df_detalhe = df_unificado[df_unificado[col_investidor] == inv_sel]
+        total_inv = df_detalhe[col_custo].sum()
+        
+        st.markdown(f"#### Detalhes: **{inv_sel}**")
+        st.metric("Custo Total do Pacote", formatar_moeda(total_inv))
+        
+        df_bar = df_detalhe.groupby(col_beneficio)[col_custo].sum().reset_index().sort_values(col_custo)
+        fig_bar = px.bar(df_bar, y=col_beneficio, x=col_custo, orientation='h', text_auto='.2s', title="Composição do Custo")
+        fig_bar.update_traces(marker_color='#ff4b4b')
+        fig_bar.update_layout(template="plotly_white", height=300)
+        st.plotly_chart(fig_bar, use_container_width=True)
