@@ -64,10 +64,12 @@ def set_png_as_page_bg(png_file):
             font-size: 16px !important;
             font-weight: 600 !important;
         }
-        /* Tags de origem do benefício */
         .badge-wyden { background-color: #cc0000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
         .badge-ep { background-color: #0044cc; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
         .badge-staage { background-color: #ff9900; color: black; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        
+        /* Ajuste de tabelas */
+        .dataframe { font-size: 14px !important; }
         </style>
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -109,6 +111,10 @@ def achar_coluna(df, termos):
 
 @st.cache_data(ttl=600)
 def load_data(gid):
+    # Se não tiver GID, retorna None para evitar erro de conexão
+    if not gid:
+        return None
+        
     SHEET_ID = "10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ"
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     try:
@@ -131,21 +137,18 @@ def load_data(gid):
              df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
-# Função inteligente para padronizar as colunas das diferentes abas
 def padronizar_colunas(df, nome_beneficio):
     if df is None or df.empty:
-        return pd.DataFrame()
+        return None # Retorna None para facilitar o filtro depois
     
-    # Mapeia colunas essenciais
     col_inv = achar_coluna(df, ["investidor", "dono", "sócio", "nome"])
     col_uni = achar_coluna(df, ["unidade", "franquia", "loja", "polo"])
     col_reg = achar_coluna(df, ["regional", "região", "estado", "uf"])
     col_cus = achar_coluna(df, ["valor", "custo", "preço", "mensalidade", "total"])
     
-    if not col_inv: col_inv = "Investidor_Desc" # Fallback se não achar
+    if not col_inv: col_inv = "Investidor_Desc"
     if not col_uni: col_uni = "Unidade_Desc"
     
-    # Renomeia para padrão
     df = df.rename(columns={
         col_inv: 'Investidor',
         col_uni: 'Unidade',
@@ -153,16 +156,13 @@ def padronizar_colunas(df, nome_beneficio):
         col_cus: 'Custo'
     })
     
-    # Garante colunas mínimas
     if 'Regional' not in df.columns: df['Regional'] = 'N/D'
     if 'Unidade' not in df.columns: df['Unidade'] = 'N/D'
     if 'Custo' not in df.columns: df['Custo'] = 0.0
     
     df['Benefício'] = nome_beneficio
     
-    # Mantém apenas colunas úteis
     cols_finais = ['Investidor', 'Unidade', 'Regional', 'Custo', 'Benefício']
-    # Adiciona colunas extras que existirem para contexto (ex: email, cargo)
     cols_extras = [c for c in df.columns if c not in cols_finais]
     
     return df[cols_finais + cols_extras]
@@ -224,7 +224,7 @@ if not check_password():
     st.stop()
 
 # ==============================================================================
-# FUNÇÃO DE RENDERIZAÇÃO ORÇAMENTO (Reutilizável)
+# FUNÇÃO DE RENDERIZAÇÃO ORÇAMENTO
 # ==============================================================================
 def renderizar_aba_orcamento(ano, gid_atual):
     df = load_data(gid_atual)
@@ -283,7 +283,6 @@ def renderizar_aba_orcamento(ano, gid_atual):
                 if col_orc: cores[col_orc] = '#D3D3D3'
                 
                 fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
-                
                 fig.add_scatter(x=df_c['Mes_Clean'], y=df_c[col_real], mode='lines+markers', name='Tendência', line=dict(color='#ffffff', width=2.5, shape='spline'), marker=dict(size=8, color='#ffffff', line=dict(width=1, color='#000000')), showlegend=False)
                 fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title="", xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()})
                 st.plotly_chart(fig, use_container_width=True)
@@ -432,6 +431,8 @@ elif aba_selecionada == "Análise Financeira":
         col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
 
         f1, f2 = st.columns(2)
+        LISTA_MESES_EXTENSO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+                       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
         mes_selecionado = f1.selectbox("📅 Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
         
         ordem_mes_selecionado = get_mes_ordem(mes_selecionado)
@@ -496,7 +497,13 @@ elif aba_selecionada == "Benefits Efficiency Map":
     df_ep = padronizar_colunas(load_data(GID_EP), "English Pass") if GID_EP else None
     df_staage = padronizar_colunas(load_data(GID_STAAGE), "Staage") if GID_STAAGE else None
     
-    df_unificado = pd.concat([df for df in [df_wyden, df_ep, df_staage] if df is not None], ignore_index=True)
+    # LISTA SEGURA PARA CONCATENAR (EVITA O ERRO VALUEERROR)
+    dfs_para_juntar = [df for df in [df_wyden, df_ep, df_staage] if df is not None]
+    
+    if dfs_para_juntar:
+        df_unificado = pd.concat(dfs_para_juntar, ignore_index=True)
+    else:
+        df_unificado = pd.DataFrame() # Vazio se não tiver dados
 
     # SE NÃO TIVER DADOS, USA O MOCK BONITO
     if df_unificado.empty:
@@ -513,25 +520,21 @@ elif aba_selecionada == "Benefits Efficiency Map":
             "Vidas_Mock": [45, 10, 5, 20, 5, 2, 35, 10, 10, 2, 15, 5]
         }
         df_unificado = pd.DataFrame(mock_data)
-        # Ajuste mock para simular formato unificado
         df_unificado = df_unificado.loc[df_unificado.index.repeat(df_unificado['Vidas_Mock'])].reset_index(drop=True)
-        df_unificado['Custo'] = df_unificado['Custo'] / df_unificado['Vidas_Mock'] # Rateio para simular linha a linha
+        df_unificado['Custo'] = df_unificado['Custo'] / df_unificado['Vidas_Mock']
 
     # 1. FILTROS EM CASCATA
     st.markdown("##### 🔍 Filtros Estratégicos")
     f1, f2, f3 = st.columns(3)
     
-    # Filtro Regional
     regionais = sorted(df_unificado['Regional'].astype(str).unique())
     sel_reg = f1.multiselect("1. Regional:", regionais)
     if sel_reg: df_unificado = df_unificado[df_unificado['Regional'].isin(sel_reg)]
     
-    # Filtro Unidade (Depende da Regional)
     unidades = sorted(df_unificado['Unidade'].astype(str).unique())
     sel_uni = f2.multiselect("2. Unidade:", unidades)
     if sel_uni: df_unificado = df_unificado[df_unificado['Unidade'].isin(sel_uni)]
     
-    # Filtro Investidor (Depende da Unidade)
     investidores = sorted(df_unificado['Investidor'].astype(str).unique())
     sel_inv = f3.multiselect("3. Investidor:", investidores)
     if sel_inv: df_unificado = df_unificado[df_unificado['Investidor'].isin(sel_inv)]
@@ -539,16 +542,14 @@ elif aba_selecionada == "Benefits Efficiency Map":
     st.markdown("---")
 
     # 2. AGREGAÇÃO DE DADOS (KPIs)
-    # Agrupa por Unidade para ter a visão de eficiência local
     df_agg = df_unificado.groupby(['Unidade', 'Investidor', 'Regional']).agg(
-        Vidas=('Custo', 'count'), # Conta linhas como vidas
+        Vidas=('Custo', 'count'),
         Custo_Total=('Custo', 'sum'),
         Beneficios_Ativos=('Benefício', lambda x: list(set(x)))
     ).reset_index()
     
     df_agg['Per Capita'] = df_agg['Custo_Total'] / df_agg['Vidas']
     
-    # KPIs Gerais
     media_pc = df_agg['Per Capita'].mean()
     std_pc = df_agg['Per Capita'].std() if len(df_agg) > 1 else 0
     maior_pc = df_agg['Per Capita'].max()
@@ -561,7 +562,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
     c3.metric("Menor Per Capita 🟢", formatar_moeda(menor_pc))
     c4.metric("Vidas Filtradas 👥", int(total_vidas))
 
-    # Classificação Automática
     def classificar(val):
         if val > media_pc + std_pc: return '🔴 Alto'
         elif val < media_pc - std_pc: return '🟢 Eficiente'
@@ -569,7 +569,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
     
     df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
 
-    # 3. GRÁFICOS E RANKING
     col_grafico, col_ranking = st.columns([6, 4])
     
     with col_grafico:
@@ -588,7 +587,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
         df_ranking = df_agg[['Unidade', 'Vidas', 'Custo_Total', 'Per Capita']].sort_values(by='Per Capita', ascending=False).head(10)
         st.dataframe(df_ranking.style.format({'Custo_Total': 'R$ {:,.2f}', 'Per Capita': 'R$ {:,.2f}'}).background_gradient(cmap='Reds', subset=['Per Capita']), hide_index=True, use_container_width=True, height=450)
 
-    # 4. DRILL-DOWN (RAIO-X DO INVESTIDOR/UNIDADE)
     st.markdown("---")
     st.markdown("##### 🔍 Raio-X Detalhado (Por Unidade)")
     
@@ -606,21 +604,16 @@ elif aba_selecionada == "Benefits Efficiency Map":
         r2.metric("Per Capita da Unidade", formatar_moeda(dados_resumo['Per Capita']))
         r3.metric("Vidas Ativas", int(dados_resumo['Vidas']))
         
-        # Tags de Benefícios
         tags = ""
         for ben in dados_resumo['Beneficios_Ativos']:
             cor_class = "badge-wyden" if "Wyden" in ben else "badge-ep" if "English" in ben else "badge-staage"
             tags += f"<span class='{cor_class}'>{ben}</span> "
         st.markdown(f"**Benefícios Ativos:** {tags}", unsafe_allow_html=True)
         
-        # Gráfico de Composição
         df_bar = df_detalhe.groupby('Benefício')['Custo'].sum().reset_index().sort_values('Custo')
         df_bar['Texto'] = df_bar['Custo'].apply(lambda x: formatar_moeda(x))
         
-        fig_bar = px.bar(
-            df_bar, y='Benefício', x='Custo', orientation='h', text='Texto',
-            title="Composição do Custo por Benefício"
-        )
+        fig_bar = px.bar(df_bar, y='Benefício', x='Custo', orientation='h', text='Texto', title="Composição do Custo por Benefício")
         fig_bar.update_traces(marker_color='#ff4b4b', textposition='inside', insidetextanchor='middle', textfont=dict(color='white'))
         fig_bar.update_layout(template="plotly_white", height=250, xaxis_visible=False, yaxis_title="")
         st.plotly_chart(fig_bar, use_container_width=True)
