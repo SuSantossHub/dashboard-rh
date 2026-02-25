@@ -117,11 +117,8 @@ def achar_coluna(df, termos):
 @st.cache_data(ttl=600)
 def load_data(gid):
     if not gid: return None
-    
-    # ID da planilha publicada (Link Público)
+    # ID da planilha pública
     PUB_ID = "2PACX-1vRDOYmkYSNo7Ttbw0GM5YhDH3nYafq-Jg2o-fk1LaFOYjRw9oKQhwVe8YvBTdrmtOdzVsQdw-koM2oz"
-    
-    # URL ajustada para formato Publicado CSV
     url = f"https://docs.google.com/spreadsheets/d/e/{PUB_ID}/pub?gid={gid}&single=true&output=csv"
     
     try:
@@ -129,7 +126,6 @@ def load_data(gid):
     except:
         return None
 
-    # Limpeza de dados financeiros
     termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum", "mensalidade", "preço"]
     for col in df.columns:
         col_norm = remover_acentos(col)
@@ -147,24 +143,26 @@ def load_data(gid):
              df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
-def processar_base_detalhada(df):
+# Função para padronizar e unificar diferentes formatos de planilha
+def padronizar_colunas(df, nome_beneficio):
     if df is None or df.empty:
         return None
 
-    # Mapeamento de colunas
-    col_razao = achar_coluna(df, ["razão social", "razao social", "empresa", "cliente", "nome fantasia"])
+    # Mapeamento Flexível
+    col_razao = achar_coluna(df, ["razão social", "razao social", "empresa", "cliente", "nome fantasia", "unidade", "franquia"])
     col_status = achar_coluna(df, ["status", "situacao"])
     col_plano = achar_coluna(df, ["plano", "produto"])
     col_tipo_usuario = achar_coluna(df, ["usuário", "usuario", "tipo"]) 
-    col_nome = achar_coluna(df, ["nome", "beneficiario"])
+    col_nome = achar_coluna(df, ["nome", "beneficiario", "colaborador"])
     
     col_valor_titular = achar_coluna(df, ["valor titular", "custo titular"])
     col_valor_dep = achar_coluna(df, ["valor dependente", "custo dependente"])
+    col_valor_unico = achar_coluna(df, ["valor", "custo", "preço", "mensalidade"]) # Para planilhas simples
 
     if not col_razao:
         return None 
 
-    # Filtra Apenas Ativos
+    # Filtra Apenas Ativos (se a coluna existir)
     if col_status:
         df = df[df[col_status].astype(str).str.lower() == 'active'].copy()
     
@@ -172,35 +170,42 @@ def processar_base_detalhada(df):
     df['Custo_Calculado'] = 0.0
     
     if col_tipo_usuario and col_valor_titular and col_valor_dep:
+        # Lógica Titular x Dependente (Aba Saúde)
         df['Custo_Calculado'] = np.where(
             df[col_tipo_usuario].astype(str).str.lower().str.contains('titular'),
             df[col_valor_titular],
             df[col_valor_dep]
         )
+    elif col_valor_unico:
+        # Lógica Valor Único (Abas Educação)
+        df['Custo_Calculado'] = df[col_valor_unico]
     
     df['Custo_Calculado'] = df['Custo_Calculado'].fillna(0)
+
+    # Preenche Benefício se não tiver coluna
+    if col_plano:
+        df['Benefício_Final'] = df[col_plano]
+    else:
+        df['Benefício_Final'] = nome_beneficio
 
     # Renomear
     df = df.rename(columns={
         col_razao: 'Razão Social',
-        col_plano: 'Benefício',
-        col_nome: 'Nome'
+        col_nome: 'Nome',
+        'Benefício_Final': 'Benefício'
     })
     
-    # Criação de colunas padrão se não existirem
+    # Padronização de Colunas Essenciais
     if 'Regional' not in df.columns:
         col_reg = achar_coluna(df, ["regional", "região", "estado"])
         df['Regional'] = df[col_reg] if col_reg else 'Geral'
+        
+    cols_uteis = ['Razão Social', 'Benefício', 'Custo_Calculado', 'Nome', 'Regional']
     
-    # Assumimos que a Unidade é a própria Razão Social para este mapa
-    if 'Unidade' not in df.columns:
-        df['Unidade'] = df['Razão Social']
-
-    cols_uteis = ['Razão Social', 'Benefício', 'Custo_Calculado', 'Nome', 'Regional', 'Unidade']
-    # Adiciona colunas extras para contexto
-    cols_extras = [c for c in df.columns if c not in cols_uteis]
+    # Garante que 'Nome' exista (se não tiver na planilha, usa 'Anônimo')
+    if 'Nome' not in df.columns: df['Nome'] = 'Colaborador'
     
-    return df[cols_uteis + cols_extras]
+    return df[cols_uteis]
 
 # ==============================================================================
 # 🔒 SISTEMA DE LOGIN
@@ -392,8 +397,11 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# 🔴🔴🔴 GID ATUALIZADO (Aba: Usuários por CNPJ) 🔴🔴🔴
-GID_BASE_COMPLETA = "462561973"
+# 🔴🔴🔴 PREENCHA AQUI COM OS GIDS REAIS DE CADA ABA 🔴🔴🔴
+GID_BASE_COMPLETA = "1919747553" # Já configurado (Saúde)
+GID_WYDEN = ""  # <--- COLOQUE O GID DA WYDEN AQUI
+GID_EP = ""     # <--- COLOQUE O GID DO ENGLISH PASS AQUI
+GID_STAAGE = "" # <--- COLOQUE O GID DA STAAGE AQUI
 
 OPCOES_MENU = [
     "Início",
@@ -520,33 +528,43 @@ elif aba_selecionada == "Análise Financeira":
         fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title=None, yaxis_title="Custo Realizado", legend_title="Ano", title=titulo_grafico)
         st.plotly_chart(fig, use_container_width=True)
 
-# === NOVA TELA: BENEFITS EFFICIENCY MAP (BASEADA NA ABA "USUÁRIOS POR CNPJ") ===
+# === NOVA TELA: BENEFITS EFFICIENCY MAP (BASEADA EM MÚLTIPLAS ABAS) ===
 elif aba_selecionada == "Benefits Efficiency Map":
     st.header("🗺️ Benefits Efficiency Map")
-    st.caption("Visão estratégica de escala, custo e eficiência por Razão Social.")
+    st.caption("Visão estratégica de escala, custo e eficiência por Razão Social (Unificando Saúde e Educação).")
 
-    df_raw = load_data(GID_BASE_COMPLETA)
-    df_detalhado = processar_base_detalhada(df_raw)
+    # CARREGA E CONSOLIDA AS 4 BASES DE DADOS
+    df_saude = padronizar_colunas(load_data(GID_BASE_COMPLETA), "V4 - Starbem")
+    df_wyden = padronizar_colunas(load_data(GID_WYDEN), "Wyden")
+    df_ep = padronizar_colunas(load_data(GID_EP), "English Pass")
+    df_staage = padronizar_colunas(load_data(GID_STAAGE), "Staage")
 
-    if df_detalhado is None or df_detalhado.empty:
-        if not GID_BASE_COMPLETA:
-            st.info("ℹ️ Exibindo dados simulados. Insira o GID da aba 'Usuários por CNPJ' no código para ver dados reais.")
-        
+    dfs = [d for d in [df_saude, df_wyden, df_ep, df_staage] if d is not None]
+    
+    if dfs:
+        df_detalhado = pd.concat(dfs, ignore_index=True)
+    else:
+        df_detalhado = pd.DataFrame()
+
+    if df_detalhado.empty:
+        st.info("ℹ️ Para ver a visão completa, insira os GIDs das abas 'Wyden', 'EP' e 'Staage' no final do código.")
+        # MOCK APENAS SE TUDO ESTIVER VAZIO
         mock_data = {
             "Razão Social": ["REGECOM MARKETING LTDA"]*5 + ["TATIKA ANALYTICS"]*3 + ["V4 COMPANY S.A."]*10,
             "Benefício": ["V4 - Starbem"]*5 + ["V4 - Starbem"]*3 + ["V4 - Starbem"]*10,
-            "Custo_Calculado": [59.90, 59.90, 59.90, 59.90, 59.90, 34.83, 34.83, 34.83, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90],
+            "Custo_Calculado": [59.90]*18,
             "Nome": [f"Funcionario {i}" for i in range(18)],
-            "Regional": ["SP"]*5 + ["MG"]*3 + ["RS"]*10
+            "Regional": ["Geral"]*18
         }
         df_detalhado = pd.DataFrame(mock_data)
 
-    # 1. KPI e GRÁFICOS (Base Total)
+    # 2. AGREGAÇÃO DE DADOS (KPIs por Razão Social)
     df_agg = df_detalhado.groupby(['Razão Social']).agg(
         Vidas=('Custo_Calculado', 'count'),
         Custo_Total=('Custo_Calculado', 'sum')
     ).reset_index()
     
+    # Tratamento para evitar divisão por zero
     df_agg['Per Capita'] = df_agg.apply(lambda x: x['Custo_Total'] / x['Vidas'] if x['Vidas'] > 0 else 0, axis=1)
     
     media_pc = df_agg['Per Capita'].mean()
@@ -568,6 +586,7 @@ elif aba_selecionada == "Benefits Efficiency Map":
     
     df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
 
+    # 3. GRÁFICOS E RANKING
     col_grafico, col_ranking = st.columns([6, 4])
     
     with col_grafico:
