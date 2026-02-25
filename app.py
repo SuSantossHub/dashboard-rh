@@ -64,11 +64,16 @@ def set_png_as_page_bg(png_file):
             font-size: 16px !important;
             font-weight: 600 !important;
         }
-        .badge-wyden { background-color: #cc0000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        .badge-ep { background-color: #0044cc; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        .badge-staage { background-color: #ff9900; color: black; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        
-        /* Ajuste de tabelas */
+        .ben-tag {
+            display: inline-block;
+            background-color: #333333;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin: 4px;
+            font-size: 13px;
+            border: 1px solid #555;
+        }
         .dataframe { font-size: 14px !important; }
         </style>
         ''' % bin_str
@@ -80,7 +85,7 @@ def formatar_moeda(valor):
     try:
         return f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except:
-        return valor
+        return "R$ 0,00"
 
 def remover_acentos(texto):
     try:
@@ -111,10 +116,7 @@ def achar_coluna(df, termos):
 
 @st.cache_data(ttl=600)
 def load_data(gid):
-    # Se não tiver GID, retorna None para evitar erro de conexão
-    if not gid:
-        return None
-        
+    if not gid: return None
     SHEET_ID = "10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ"
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     try:
@@ -122,50 +124,73 @@ def load_data(gid):
     except:
         return None
 
-    termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum", "mensalidade", "coparticipacao"]
+    # Limpeza genérica de colunas financeiras
+    termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum", "mensalidade", "preço"]
     for col in df.columns:
         col_norm = remover_acentos(col)
-        eh_financeiro = any(remover_acentos(t) in col_norm for t in termos_financeiros)
-        tem_cifrao = df[col].dtype == "object" and df[col].astype(str).str.contains("R\$").any()
+        eh_financeiro = any(t in col_norm for t in termos_financeiros)
+        
+        primeiro_valor = df[col].dropna().iloc[0] if not df[col].dropna().empty else ""
+        tem_cifrao = "R$" in str(primeiro_valor)
         
         if eh_financeiro or tem_cifrao:
              if df[col].dtype == "object":
                 df[col] = df[col].astype(str).str.replace("R$", "", regex=False)
                 df[col] = df[col].str.replace(" ", "", regex=False)
-                df[col] = df[col].str.replace(".", "", regex=False)
-                df[col] = df[col].str.replace(",", ".", regex=False)
+                df[col] = df[col].str.replace(".", "", regex=False) 
+                df[col] = df[col].str.replace(",", ".", regex=False) 
              df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
-def padronizar_colunas(df, nome_beneficio):
+# Função Especializada para processar a "Base de Usuários por CNPJ"
+def processar_base_detalhada(df):
     if df is None or df.empty:
-        return None # Retorna None para facilitar o filtro depois
+        return None
+
+    # 1. Identificar colunas chaves
+    col_razao = achar_coluna(df, ["razaosocial", "empresa", "cliente"])
+    col_status = achar_coluna(df, ["status", "situacao"])
+    col_plano = achar_coluna(df, ["plano", "produto"])
+    col_tipo_usuario = achar_coluna(df, ["usuario", "tipo"]) # Titular ou Dependente
+    col_nome = achar_coluna(df, ["nome", "beneficiario"])
     
-    col_inv = achar_coluna(df, ["investidor", "dono", "sócio", "nome"])
-    col_uni = achar_coluna(df, ["unidade", "franquia", "loja", "polo"])
-    col_reg = achar_coluna(df, ["regional", "região", "estado", "uf"])
-    col_cus = achar_coluna(df, ["valor", "custo", "preço", "mensalidade", "total"])
+    # Colunas de Custo (Titular e Dependente)
+    col_valor_titular = achar_coluna(df, ["valortitular", "custotitular"])
+    col_valor_dep = achar_coluna(df, ["valordependente", "custodependente"])
+
+    if not col_razao:
+        return None 
+
+    # 2. Filtrar Apenas Ativos
+    if col_status:
+        df = df[df[col_status].astype(str).str.lower() == 'active'].copy()
     
-    if not col_inv: col_inv = "Investidor_Desc"
-    if not col_uni: col_uni = "Unidade_Desc"
+    # 3. Calcular Custo Linha a Linha
+    df['Custo_Calculado'] = 0.0
     
+    if col_tipo_usuario and col_valor_titular and col_valor_dep:
+        # Se for titular, usa valor titular. Se dependente, usa valor dependente.
+        df['Custo_Calculado'] = np.where(
+            df[col_tipo_usuario].astype(str).str.lower().str.contains('titular'),
+            df[col_valor_titular],
+            df[col_valor_dep]
+        )
+    
+    # Preenche vazios com 0
+    df['Custo_Calculado'] = df['Custo_Calculado'].fillna(0)
+
+    # 4. Renomear para padrão do sistema
     df = df.rename(columns={
-        col_inv: 'Investidor',
-        col_uni: 'Unidade',
-        col_reg: 'Regional',
-        col_cus: 'Custo'
+        col_razao: 'Razão Social',
+        col_plano: 'Benefício',
+        col_nome: 'Nome'
     })
     
-    if 'Regional' not in df.columns: df['Regional'] = 'N/D'
-    if 'Unidade' not in df.columns: df['Unidade'] = 'N/D'
-    if 'Custo' not in df.columns: df['Custo'] = 0.0
+    # Retorna apenas colunas úteis
+    cols_uteis = ['Razão Social', 'Benefício', 'Custo_Calculado', 'Nome']
+    cols_extras = [c for c in df.columns if c not in cols_uteis]
     
-    df['Benefício'] = nome_beneficio
-    
-    cols_finais = ['Investidor', 'Unidade', 'Regional', 'Custo', 'Benefício']
-    cols_extras = [c for c in df.columns if c not in cols_finais]
-    
-    return df[cols_finais + cols_extras]
+    return df[cols_uteis + cols_extras]
 
 # ==============================================================================
 # 🔒 SISTEMA DE LOGIN
@@ -357,10 +382,8 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# 🔴🔴🔴 INSIRA AQUI OS GIDs DAS 3 ABAS 🔴🔴🔴
-GID_WYDEN = "1173982201" 
-GID_EP = "587154330" 
-GID_STAAGE = "1921348637"
+# 🔴🔴🔴 GID ATUALIZADO 🔴🔴🔴
+GID_BASE_COMPLETA = "35866832"
 
 OPCOES_MENU = [
     "Início",
@@ -487,68 +510,38 @@ elif aba_selecionada == "Análise Financeira":
         fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title=None, yaxis_title="Custo Realizado", legend_title="Ano", title=titulo_grafico)
         st.plotly_chart(fig, use_container_width=True)
 
-# === NOVA TELA: BENEFITS EFFICIENCY MAP (COM DADOS REAIS WYDEN/EP/STAAGE) ===
+# === NOVA TELA: BENEFITS EFFICIENCY MAP (BASEADA NA ABA "USUÁRIOS POR CNPJ") ===
 elif aba_selecionada == "Benefits Efficiency Map":
     st.header("🗺️ Benefits Efficiency Map")
-    st.caption("Visão estratégica de escala, custo e eficiência por unidade e investidor da rede.")
+    st.caption("Visão estratégica de escala, custo e eficiência por Razão Social.")
 
-    # Carrega dados reais das 3 abas e padroniza
-    df_wyden = padronizar_colunas(load_data(GID_WYDEN), "Wyden") if GID_WYDEN else None
-    df_ep = padronizar_colunas(load_data(GID_EP), "English Pass") if GID_EP else None
-    df_staage = padronizar_colunas(load_data(GID_STAAGE), "Staage") if GID_STAAGE else None
-    
-    # LISTA SEGURA PARA CONCATENAR (EVITA O ERRO VALUEERROR)
-    dfs_para_juntar = [df for df in [df_wyden, df_ep, df_staage] if df is not None]
-    
-    if dfs_para_juntar:
-        df_unificado = pd.concat(dfs_para_juntar, ignore_index=True)
-    else:
-        df_unificado = pd.DataFrame() # Vazio se não tiver dados
+    # Carrega e processa a base completa
+    df_raw = load_data(GID_BASE_COMPLETA)
+    df_detalhado = processar_base_detalhada(df_raw)
 
-    # SE NÃO TIVER DADOS, USA O MOCK BONITO
-    if df_unificado.empty:
-        if not GID_WYDEN and not GID_EP and not GID_STAAGE:
-            st.info("ℹ️ Exibindo dados simulados. Insira os GIDs de 'Wyden', 'EP' e 'Staage' no código para ver dados reais.")
+    if df_detalhado is None or df_detalhado.empty:
+        if not GID_BASE_COMPLETA:
+            st.info("ℹ️ Exibindo dados simulados. Insira o GID da aba 'Usuários por CNPJ' no código para ver dados reais.")
         
         # MOCK DATA PREMIUM (Simulação)
         mock_data = {
-            "Investidor": ["V4 Paulista"]*3 + ["V4 Rio"]*3 + ["V4 BH"]*2 + ["V4 Sul"]*2 + ["V4 Norte"]*2,
-            "Unidade": ["Paulista Matriz"]*3 + ["Rio Copacabana"]*3 + ["BH Savassi"]*2 + ["Sul Gramado"]*2 + ["Norte Manaus"]*2,
-            "Regional": ["SP Capital"]*3 + ["RJ Capital"]*3 + ["MG Capital"]*2 + ["RS Serra"]*2 + ["AM Capital"]*2,
-            "Benefício": ["Wyden", "English Pass", "Staage", "Wyden", "English Pass", "Staage", "Wyden", "Staage", "Wyden", "English Pass", "Wyden", "Staage"],
-            "Custo": [15000, 3000, 1500, 10000, 2000, 500, 15000, 3000, 2500, 500, 8000, 1000],
-            "Vidas_Mock": [45, 10, 5, 20, 5, 2, 35, 10, 10, 2, 15, 5]
+            "Razão Social": ["REGECOM MARKETING LTDA"]*5 + ["TATIKA ANALYTICS"]*3 + ["V4 COMPANY S.A."]*10,
+            "Benefício": ["V4 - Starbem"]*5 + ["V4 - Starbem"]*3 + ["V4 - Starbem"]*10,
+            "Custo_Calculado": [59.90, 59.90, 59.90, 59.90, 59.90, 34.83, 34.83, 34.83, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90],
+            "Nome": [f"Funcionario {i}" for i in range(18)]
         }
-        df_unificado = pd.DataFrame(mock_data)
-        df_unificado = df_unificado.loc[df_unificado.index.repeat(df_unificado['Vidas_Mock'])].reset_index(drop=True)
-        df_unificado['Custo'] = df_unificado['Custo'] / df_unificado['Vidas_Mock']
+        df_detalhado = pd.DataFrame(mock_data)
 
-    # 1. FILTROS EM CASCATA
-    st.markdown("##### 🔍 Filtros Estratégicos")
-    f1, f2, f3 = st.columns(3)
+    # 1. FILTRO DE RAZÃO SOCIAL
     
-    regionais = sorted(df_unificado['Regional'].astype(str).unique())
-    sel_reg = f1.multiselect("1. Regional:", regionais)
-    if sel_reg: df_unificado = df_unificado[df_unificado['Regional'].isin(sel_reg)]
-    
-    unidades = sorted(df_unificado['Unidade'].astype(str).unique())
-    sel_uni = f2.multiselect("2. Unidade:", unidades)
-    if sel_uni: df_unificado = df_unificado[df_unificado['Unidade'].isin(sel_uni)]
-    
-    investidores = sorted(df_unificado['Investidor'].astype(str).unique())
-    sel_inv = f3.multiselect("3. Investidor:", investidores)
-    if sel_inv: df_unificado = df_unificado[df_unificado['Investidor'].isin(sel_inv)]
-
-    st.markdown("---")
-
-    # 2. AGREGAÇÃO DE DADOS (KPIs)
-    df_agg = df_unificado.groupby(['Unidade', 'Investidor', 'Regional']).agg(
-        Vidas=('Custo', 'count'),
-        Custo_Total=('Custo', 'sum'),
-        Beneficios_Ativos=('Benefício', lambda x: list(set(x)))
+    # 2. AGREGAÇÃO DE DADOS (KPIs por Razão Social)
+    df_agg = df_detalhado.groupby(['Razão Social']).agg(
+        Vidas=('Custo_Calculado', 'count'),
+        Custo_Total=('Custo_Calculado', 'sum')
     ).reset_index()
     
-    df_agg['Per Capita'] = df_agg['Custo_Total'] / df_agg['Vidas']
+    # Tratamento para evitar divisão por zero
+    df_agg['Per Capita'] = df_agg.apply(lambda x: x['Custo_Total'] / x['Vidas'] if x['Vidas'] > 0 else 0, axis=1)
     
     media_pc = df_agg['Per Capita'].mean()
     std_pc = df_agg['Per Capita'].std() if len(df_agg) > 1 else 0
@@ -569,13 +562,14 @@ elif aba_selecionada == "Benefits Efficiency Map":
     
     df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
 
+    # 3. GRÁFICOS E RANKING
     col_grafico, col_ranking = st.columns([6, 4])
     
     with col_grafico:
-        st.markdown("##### 🎯 Escala vs. Eficiência (Por Unidade)")
+        st.markdown("##### 🎯 Escala vs. Eficiência")
         fig_scatter = px.scatter(
             df_agg, x='Vidas', y='Per Capita', size='Custo_Total', color='Status',
-            hover_name='Unidade', hover_data=['Investidor', 'Regional'], size_max=40,
+            hover_name='Razão Social', size_max=40,
             color_discrete_map={'🔴 Alto': '#cc0000', '🟡 Na Média': '#ff4b4b', '🟢 Eficiente': '#2e7d32'}
         )
         fig_scatter.add_hline(y=media_pc, line_dash="dot", line_color="#ffffff", annotation_text="Média")
@@ -583,37 +577,47 @@ elif aba_selecionada == "Benefits Efficiency Map":
         st.plotly_chart(fig_scatter, use_container_width=True)
 
     with col_ranking:
-        st.markdown("##### 🏆 Ranking de Custo (Unidades)")
-        df_ranking = df_agg[['Unidade', 'Vidas', 'Custo_Total', 'Per Capita']].sort_values(by='Per Capita', ascending=False).head(10)
+        st.markdown("##### 🏆 Ranking de Custo")
+        df_ranking = df_agg[['Razão Social', 'Vidas', 'Custo_Total', 'Per Capita']].sort_values(by='Per Capita', ascending=False).head(10)
         st.dataframe(df_ranking.style.format({'Custo_Total': 'R$ {:,.2f}', 'Per Capita': 'R$ {:,.2f}'}).background_gradient(cmap='Reds', subset=['Per Capita']), hide_index=True, use_container_width=True, height=450)
 
+    # 4. DRILL-DOWN (RAIO-X DETALHADO POR RAZÃO SOCIAL)
     st.markdown("---")
-    st.markdown("##### 🔍 Raio-X Detalhado (Por Unidade)")
+    st.markdown("##### 🔍 Raio-X Detalhado (Por Unidade/Razão Social)")
     
-    lista_unidades_dd = sorted(df_agg['Unidade'].unique())
-    uni_sel = st.selectbox("Selecione a Unidade para investigar:", ["Selecione..."] + lista_unidades_dd)
+    lista_razao = sorted(df_agg['Razão Social'].unique())
+    razao_sel = st.selectbox("Selecione a Razão Social para investigar:", ["Selecione..."] + lista_razao)
 
-    if uni_sel != "Selecione...":
-        df_detalhe = df_unificado[df_unificado['Unidade'] == uni_sel]
-        dados_resumo = df_agg[df_agg['Unidade'] == uni_sel].iloc[0]
+    if razao_sel != "Selecione...":
+        df_filtrado = df_detalhado[df_detalhado['Razão Social'] == razao_sel]
+        dados_resumo = df_agg[df_agg['Razão Social'] == razao_sel].iloc[0]
         
-        st.markdown(f"#### Detalhes: **{uni_sel}** ({dados_resumo['Investidor']})")
+        st.markdown(f"#### Detalhes: **{razao_sel}**")
         
         r1, r2, r3 = st.columns(3)
         r1.metric("Investimento Total", formatar_moeda(dados_resumo['Custo_Total']))
         r2.metric("Per Capita da Unidade", formatar_moeda(dados_resumo['Per Capita']))
         r3.metric("Vidas Ativas", int(dados_resumo['Vidas']))
         
-        tags = ""
-        for ben in dados_resumo['Beneficios_Ativos']:
-            cor_class = "badge-wyden" if "Wyden" in ben else "badge-ep" if "English" in ben else "badge-staage"
-            tags += f"<span class='{cor_class}'>{ben}</span> "
-        st.markdown(f"**Benefícios Ativos:** {tags}", unsafe_allow_html=True)
+        col_d1, col_d2 = st.columns([1, 1])
         
-        df_bar = df_detalhe.groupby('Benefício')['Custo'].sum().reset_index().sort_values('Custo')
-        df_bar['Texto'] = df_bar['Custo'].apply(lambda x: formatar_moeda(x))
-        
-        fig_bar = px.bar(df_bar, y='Benefício', x='Custo', orientation='h', text='Texto', title="Composição do Custo por Benefício")
-        fig_bar.update_traces(marker_color='#ff4b4b', textposition='inside', insidetextanchor='middle', textfont=dict(color='white'))
-        fig_bar.update_layout(template="plotly_white", height=250, xaxis_visible=False, yaxis_title="")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        with col_d1:
+            st.markdown("**Composição do Custo por Benefício:**")
+            df_bar = df_filtrado.groupby('Benefício')['Custo_Calculado'].sum().reset_index().sort_values('Custo_Calculado')
+            df_bar['Texto'] = df_bar['Custo_Calculado'].apply(lambda x: formatar_moeda(x))
+            
+            fig_bar = px.bar(
+                df_bar, y='Benefício', x='Custo_Calculado', orientation='h', text='Texto'
+            )
+            fig_bar.update_traces(marker_color='#ff4b4b', textposition='inside', insidetextanchor='middle', textfont=dict(color='white'))
+            fig_bar.update_layout(template="plotly_white", height=300, xaxis_visible=False, yaxis_title="")
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+        with col_d2:
+            st.markdown("**Lista de Beneficiários:**")
+            st.dataframe(
+                df_filtrado[['Nome', 'Benefício', 'Custo_Calculado']].sort_values('Custo_Calculado', ascending=False).style.format({'Custo_Calculado': 'R$ {:,.2f}'}),
+                hide_index=True,
+                use_container_width=True,
+                height=300
+            )
