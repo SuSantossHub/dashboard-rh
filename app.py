@@ -117,14 +117,19 @@ def achar_coluna(df, termos):
 @st.cache_data(ttl=600)
 def load_data(gid):
     if not gid: return None
-    SHEET_ID = "10lEeyQAAOaHqpUTOfdMzaHgjfBpuNIHeCRabsv43WTQ"
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
+    
+    # ID da planilha publicada (Link Público)
+    PUB_ID = "2PACX-1vRDOYmkYSNo7Ttbw0GM5YhDH3nYafq-Jg2o-fk1LaFOYjRw9oKQhwVe8YvBTdrmtOdzVsQdw-koM2oz"
+    
+    # URL ajustada para formato Publicado CSV
+    url = f"https://docs.google.com/spreadsheets/d/e/{PUB_ID}/pub?gid={gid}&single=true&output=csv"
+    
     try:
         df = pd.read_csv(url)
     except:
         return None
 
-    # Limpeza genérica de colunas financeiras
+    # Limpeza de dados financeiros
     termos_financeiros = ["custo", "valor", "total", "orçado", "realizado", "budget", "soma", "sum", "mensalidade", "preço"]
     for col in df.columns:
         col_norm = remover_acentos(col)
@@ -142,52 +147,57 @@ def load_data(gid):
              df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
-# Função Especializada para processar a "Base de Usuários por CNPJ"
 def processar_base_detalhada(df):
     if df is None or df.empty:
         return None
 
-    # 1. Identificar colunas chaves
-    col_razao = achar_coluna(df, ["razaosocial", "empresa", "cliente"])
+    # Mapeamento de colunas
+    col_razao = achar_coluna(df, ["razão social", "razao social", "empresa", "cliente", "nome fantasia"])
     col_status = achar_coluna(df, ["status", "situacao"])
     col_plano = achar_coluna(df, ["plano", "produto"])
-    col_tipo_usuario = achar_coluna(df, ["usuario", "tipo"]) # Titular ou Dependente
+    col_tipo_usuario = achar_coluna(df, ["usuário", "usuario", "tipo"]) 
     col_nome = achar_coluna(df, ["nome", "beneficiario"])
     
-    # Colunas de Custo (Titular e Dependente)
-    col_valor_titular = achar_coluna(df, ["valortitular", "custotitular"])
-    col_valor_dep = achar_coluna(df, ["valordependente", "custodependente"])
+    col_valor_titular = achar_coluna(df, ["valor titular", "custo titular"])
+    col_valor_dep = achar_coluna(df, ["valor dependente", "custo dependente"])
 
     if not col_razao:
         return None 
 
-    # 2. Filtrar Apenas Ativos
+    # Filtra Apenas Ativos
     if col_status:
         df = df[df[col_status].astype(str).str.lower() == 'active'].copy()
     
-    # 3. Calcular Custo Linha a Linha
+    # Calcular Custo
     df['Custo_Calculado'] = 0.0
     
     if col_tipo_usuario and col_valor_titular and col_valor_dep:
-        # Se for titular, usa valor titular. Se dependente, usa valor dependente.
         df['Custo_Calculado'] = np.where(
             df[col_tipo_usuario].astype(str).str.lower().str.contains('titular'),
             df[col_valor_titular],
             df[col_valor_dep]
         )
     
-    # Preenche vazios com 0
     df['Custo_Calculado'] = df['Custo_Calculado'].fillna(0)
 
-    # 4. Renomear para padrão do sistema
+    # Renomear
     df = df.rename(columns={
         col_razao: 'Razão Social',
         col_plano: 'Benefício',
         col_nome: 'Nome'
     })
     
-    # Retorna apenas colunas úteis
-    cols_uteis = ['Razão Social', 'Benefício', 'Custo_Calculado', 'Nome']
+    # Criação de colunas padrão se não existirem
+    if 'Regional' not in df.columns:
+        col_reg = achar_coluna(df, ["regional", "região", "estado"])
+        df['Regional'] = df[col_reg] if col_reg else 'Geral'
+    
+    # Assumimos que a Unidade é a própria Razão Social para este mapa
+    if 'Unidade' not in df.columns:
+        df['Unidade'] = df['Razão Social']
+
+    cols_uteis = ['Razão Social', 'Benefício', 'Custo_Calculado', 'Nome', 'Regional', 'Unidade']
+    # Adiciona colunas extras para contexto
     cols_extras = [c for c in df.columns if c not in cols_uteis]
     
     return df[cols_uteis + cols_extras]
@@ -382,8 +392,8 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# 🔴🔴🔴 GID ATUALIZADO 🔴🔴🔴
-GID_BASE_COMPLETA = "1919747553"
+# 🔴🔴🔴 GID ATUALIZADO (Aba: Usuários por CNPJ) 🔴🔴🔴
+GID_BASE_COMPLETA = "462561973"
 
 OPCOES_MENU = [
     "Início",
@@ -515,7 +525,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
     st.header("🗺️ Benefits Efficiency Map")
     st.caption("Visão estratégica de escala, custo e eficiência por Razão Social.")
 
-    # Carrega e processa a base completa
     df_raw = load_data(GID_BASE_COMPLETA)
     df_detalhado = processar_base_detalhada(df_raw)
 
@@ -523,24 +532,21 @@ elif aba_selecionada == "Benefits Efficiency Map":
         if not GID_BASE_COMPLETA:
             st.info("ℹ️ Exibindo dados simulados. Insira o GID da aba 'Usuários por CNPJ' no código para ver dados reais.")
         
-        # MOCK DATA PREMIUM (Simulação)
         mock_data = {
             "Razão Social": ["REGECOM MARKETING LTDA"]*5 + ["TATIKA ANALYTICS"]*3 + ["V4 COMPANY S.A."]*10,
             "Benefício": ["V4 - Starbem"]*5 + ["V4 - Starbem"]*3 + ["V4 - Starbem"]*10,
             "Custo_Calculado": [59.90, 59.90, 59.90, 59.90, 59.90, 34.83, 34.83, 34.83, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90, 59.90],
-            "Nome": [f"Funcionario {i}" for i in range(18)]
+            "Nome": [f"Funcionario {i}" for i in range(18)],
+            "Regional": ["SP"]*5 + ["MG"]*3 + ["RS"]*10
         }
         df_detalhado = pd.DataFrame(mock_data)
 
-    # 1. FILTRO DE RAZÃO SOCIAL
-    
-    # 2. AGREGAÇÃO DE DADOS (KPIs por Razão Social)
+    # 1. KPI e GRÁFICOS (Base Total)
     df_agg = df_detalhado.groupby(['Razão Social']).agg(
         Vidas=('Custo_Calculado', 'count'),
         Custo_Total=('Custo_Calculado', 'sum')
     ).reset_index()
     
-    # Tratamento para evitar divisão por zero
     df_agg['Per Capita'] = df_agg.apply(lambda x: x['Custo_Total'] / x['Vidas'] if x['Vidas'] > 0 else 0, axis=1)
     
     media_pc = df_agg['Per Capita'].mean()
@@ -562,7 +568,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
     
     df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
 
-    # 3. GRÁFICOS E RANKING
     col_grafico, col_ranking = st.columns([6, 4])
     
     with col_grafico:
@@ -581,9 +586,9 @@ elif aba_selecionada == "Benefits Efficiency Map":
         df_ranking = df_agg[['Razão Social', 'Vidas', 'Custo_Total', 'Per Capita']].sort_values(by='Per Capita', ascending=False).head(10)
         st.dataframe(df_ranking.style.format({'Custo_Total': 'R$ {:,.2f}', 'Per Capita': 'R$ {:,.2f}'}).background_gradient(cmap='Reds', subset=['Per Capita']), hide_index=True, use_container_width=True, height=450)
 
-    # 4. DRILL-DOWN (RAIO-X DETALHADO POR RAZÃO SOCIAL)
+    # 4. DRILL-DOWN DETALHADO
     st.markdown("---")
-    st.markdown("##### 🔍 Raio-X Detalhado (Por Unidade/Razão Social)")
+    st.markdown("##### 🔍 Raio-X Detalhado (Por Razão Social)")
     
     lista_razao = sorted(df_agg['Razão Social'].unique())
     razao_sel = st.selectbox("Selecione a Razão Social para investigar:", ["Selecione..."] + lista_razao)
