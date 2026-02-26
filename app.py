@@ -261,8 +261,6 @@ def renderizar_aba_orcamento(ano, gid_atual):
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Budget Mensal", "R$ 286.000,00")
         c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
-        
-        # MUDANÇA AQUI: O delta de % consumido agora está abaixo do Realizado YTD
         c3.metric("Realizado YTD", formatar_moeda(realizado), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
         c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca))
         
@@ -328,7 +326,7 @@ st.sidebar.markdown("---")
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 
-# 🔴🔴🔴 GIDS ATUALIZADOS 🔴🔴🔴
+# 🔴🔴🔴 GIDS DA BASE DE DADOS 🔴🔴🔴
 GID_BASE_COMPLETA = "1919747553" # Saúde
 GID_WYDEN = "" 
 GID_EP = "" 
@@ -338,7 +336,15 @@ GID_CONSULTAS = "" # <--- INSIRA AQUI O GID DA ABA DE CONSULTAS
 OPCOES_MENU = ["Início", "Orçamento de Benefícios", "Análise Financeira", "Benefits Efficiency Map"]
 st.sidebar.header("Navegação")
 aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU, label_visibility="collapsed")
-st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True) 
+
+st.sidebar.markdown("<br><br><br>", unsafe_allow_html=True) 
+
+# --- BOTÃO DE ATUALIZAÇÃO ---
+if st.sidebar.button("🔄 Atualizar Dados", use_container_width=True):
+    st.cache_data.clear() # Limpa a memória em cache
+    st.rerun()            # Recarrega a página
+
+# --- BOTÃO DE SAIR ---
 if st.sidebar.button("Sair / Logout", use_container_width=True):
     st.session_state["password_correct"] = False
     st.rerun()
