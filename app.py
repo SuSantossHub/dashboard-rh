@@ -331,7 +331,7 @@ GID_BASE_COMPLETA = "1919747553" # Saúde
 GID_WYDEN = "" 
 GID_EP = "" 
 GID_STAAGE = ""
-GID_CONSULTAS = "" # <--- INSIRA AQUI O GID DA ABA DE CONSULTAS
+GID_CONSULTAS = "" # Consultas
 
 OPCOES_MENU = ["Início", "Orçamento de Benefícios", "Análise Financeira", "Benefits Efficiency Map"]
 st.sidebar.header("Navegação")
@@ -364,7 +364,61 @@ if aba_selecionada == "Início":
             <p style="color: #cccccc; font-size: 16px; max-width: 900px; margin-bottom: 0px;">Plataforma estratégica para gestão e inteligência dos benefícios V4.</p>
         </div>
     """, unsafe_allow_html=True)
-    st.markdown("Escolha uma opção no menu lateral para avançar.")
+
+    # ==========================================================================
+    # ADIÇÃO DO GRÁFICO DE EVOLUÇÃO (TOTAL: R$ 3.38 MILHÕES) NA TELA DE INÍCIO
+    # ==========================================================================
+    st.markdown("---")
+    st.subheader("📈 Visão Executiva: Evolução do Custo Anual")
+    st.caption("Acompanhamento da estabilização de custos de benefícios (Períodos 1 a 12).")
+    
+    # Dados da evolução informados na sua lista
+    dados_totais = {
+        "Período": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12"],
+        "Custo": [261554.66, 267902.94, 272756.06, 281187.74, 283075.06, 282339.74, 286653.62, 288124.26, 288859.58, 290330.22, 290330.22, 290330.22]
+    }
+    df_trend = pd.DataFrame(dados_totais)
+
+    total_ano = df_trend["Custo"].sum()
+    media_mes = df_trend["Custo"].mean()
+    crescimento = (df_trend["Custo"].iloc[-1] / df_trend["Custo"].iloc[0]) - 1
+
+    # Cards de Resumo Executivo
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Custo Total Anual", f"R$ {total_ano/1000000:.2f} Milhões")
+    col2.metric("Média por Período", f"R$ {media_mes/1000:.1f}k")
+    col3.metric("Inflação da Carteira (P1 a P12)", f"+{crescimento*100:.1f}%", delta="Aumento estabilizado", delta_color="inverse")
+
+    # Gráfico Elegante (Barra + Linha de Tendência)
+    df_trend['Texto_Exibicao'] = df_trend['Custo'].apply(lambda x: f"R$ {x/1000:.0f}k")
+
+    fig_executivo = px.bar(
+        df_trend, 
+        x="Período", 
+        y="Custo", 
+        text='Texto_Exibicao'
+    )
+
+    # Linha Vermelha sobre as barras para mostrar a subida e o "platô"
+    fig_executivo.add_scatter(
+        x=df_trend['Período'], 
+        y=df_trend['Custo'], 
+        mode='lines+markers',
+        name='Curva de Evolução',
+        line=dict(color='#cc0000', width=3),
+        marker=dict(size=8, color='#cc0000'),
+        showlegend=False
+    )
+
+    fig_executivo.update_traces(marker_color='#d3d3d3', textposition='outside')
+    fig_executivo.update_layout(
+        template="plotly_white", 
+        yaxis_visible=False, 
+        xaxis_title="", 
+        height=350, 
+        margin=dict(t=30, b=0, l=0, r=0)
+    )
+    st.plotly_chart(fig_executivo, use_container_width=True)
 
 elif aba_selecionada == "Orçamento de Benefícios":
     st.header("🎯 Orçamento de Benefícios")
@@ -416,12 +470,10 @@ elif aba_selecionada == "Análise Financeira":
         fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title=None, yaxis_title="Custo Realizado")
         st.plotly_chart(fig, use_container_width=True)
 
-# === NOVA TELA: BENEFITS EFFICIENCY MAP ===
 elif aba_selecionada == "Benefits Efficiency Map":
     st.header("🗺️ Benefits Efficiency Map")
     st.caption("Visão estratégica de escala, custo e eficiência por Razão Social (Unificando Saúde e Educação).")
 
-    # 1. Carrega Dados Financeiros (Vidas e Custos)
     df_saude = padronizar_colunas(load_data(GID_BASE_COMPLETA), "V4 - Starbem")
     df_wyden = padronizar_colunas(load_data(GID_WYDEN), "Wyden")
     df_ep = padronizar_colunas(load_data(GID_EP), "English Pass")
@@ -431,13 +483,11 @@ elif aba_selecionada == "Benefits Efficiency Map":
     if dfs: df_detalhado = pd.concat(dfs, ignore_index=True)
     else: df_detalhado = pd.DataFrame()
 
-    # 2. Carrega Dados de Consultas (Saúde)
     df_consultas_raw = load_data(GID_CONSULTAS)
     df_consultas = processar_consultas(df_consultas_raw)
 
     if df_detalhado.empty and df_consultas is None:
         st.info("ℹ️ Para ver a visão completa, insira os GIDs das abas no final do código.")
-        # MOCK APENAS SE TUDO ESTIVER VAZIO
         mock_data = {
             "Razão Social": ["REGECOM MARKETING LTDA"]*5 + ["V4 COMPANY S.A."]*10,
             "Benefício": ["V4 - Starbem"]*5 + ["V4 - Starbem"]*10,
@@ -448,7 +498,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
         df_detalhado = pd.DataFrame(mock_data)
         df_consultas = pd.DataFrame([{"Razão Social": "V4 COMPANY S.A.", "Status_Consulta": "Finalizado", "Especialidade": "Psicólogo"}]*20)
 
-    # --- FILTROS DE CONSULTAS ---
     st.markdown("##### 🩺 Filtros de Utilização (Consultas)")
     fc1, fc2 = st.columns(2)
     
@@ -457,7 +506,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
     if df_consultas is not None and not df_consultas.empty:
         status_opcoes = sorted(df_consultas['Status_Consulta'].dropna().unique())
         sel_status = fc1.multiselect("Status da Consulta:", status_opcoes, default=[s for s in status_opcoes if 'finalizado' in str(s).lower()])
-        
         esp_opcoes = sorted(df_consultas['Especialidade'].dropna().unique())
         sel_esp = fc2.multiselect("Especialidade:", esp_opcoes)
         
@@ -471,7 +519,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
 
     st.markdown("---")
 
-    # 3. AGREGAÇÃO FINAL (JOIN: Financeiro + Consultas)
     df_agg = df_detalhado.groupby(['Razão Social']).agg(
         Vidas=('Custo_Calculado', 'count'),
         Custo_Total=('Custo_Calculado', 'sum'),
@@ -480,7 +527,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
     
     df_agg = pd.merge(df_agg, qtd_consultas_por_empresa, on='Razão Social', how='left')
     df_agg['Total_Consultas'] = df_agg['Total_Consultas'].fillna(0).astype(int)
-    
     df_agg['Per Capita'] = df_agg.apply(lambda x: x['Custo_Total'] / x['Vidas'] if x['Vidas'] > 0 else 0, axis=1)
     
     media_pc = df_agg['Per Capita'].mean()
@@ -502,7 +548,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
         return '🟡 Na Média'
     df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
 
-    # 4. GRÁFICOS
     col_grafico, col_ranking = st.columns([6, 4])
     with col_grafico:
         st.markdown("##### 🎯 Escala vs. Eficiência")
@@ -520,7 +565,6 @@ elif aba_selecionada == "Benefits Efficiency Map":
         df_ranking = df_agg[['Razão Social', 'Vidas', 'Total_Consultas']].sort_values(by='Total_Consultas', ascending=False).head(10)
         st.dataframe(df_ranking.style.background_gradient(cmap='Reds', subset=['Total_Consultas']), hide_index=True, use_container_width=True, height=450)
 
-    # 5. DRILL-DOWN DETALHADO
     st.markdown("---")
     st.markdown("##### 🔍 Raio-X Detalhado (Por Razão Social)")
     
