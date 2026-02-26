@@ -304,3 +304,266 @@ def renderizar_aba_orcamento(ano, gid_atual):
             try:
                 piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
                 piv = piv[sorted(piv.columns, key=get_mes_ordem)]
+                piv.columns = [limpar_nome_mes(c) for c in piv.columns]
+                piv["Total Anual"] = piv.sum(axis=1)
+                piv = piv.sort_values("Total Anual", ascending=False)
+                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
+                piv = pd.concat([piv, lin_tot.to_frame().T])
+                sty = piv.style.format("R$ {:,.2f}")
+                cols = [c for c in piv.columns if c != "Total Anual"]
+                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
+                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
+                st.dataframe(sty, use_container_width=True)
+            except: pass
+
+# ==============================================================================
+# NAVEGAÇÃO
+# ==============================================================================
+usuario_atual = st.session_state.get("usuario_logado", "Visitante")
+role = st.session_state.get("role", "viewer")
+st.sidebar.success(f"👤 **{usuario_atual}**")
+if role == "admin": st.sidebar.caption("🔧 Modo Admin Ativo")
+st.sidebar.markdown("---")
+
+GID_2026 = "1350897026"
+GID_2025 = "1743422062"
+
+# 🔴🔴🔴 GIDS ATUALIZADOS 🔴🔴🔴
+GID_BASE_COMPLETA = "1919747553" # Saúde
+GID_WYDEN = "" 
+GID_EP = "" 
+GID_STAAGE = ""
+GID_CONSULTAS = "" # <--- INSIRA AQUI O GID DA ABA DE CONSULTAS
+
+OPCOES_MENU = ["Início", "Orçamento de Benefícios", "Análise Financeira", "Benefits Efficiency Map"]
+st.sidebar.header("Navegação")
+aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU, label_visibility="collapsed")
+st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True) 
+if st.sidebar.button("Sair / Logout", use_container_width=True):
+    st.session_state["password_correct"] = False
+    st.rerun()
+
+# ==============================================================================
+# LÓGICA DAS TELAS
+# ==============================================================================
+if aba_selecionada == "Início":
+    st.markdown("<br>", unsafe_allow_html=True)
+    logo_b64 = ""
+    if os.path.exists("favicon.png"): logo_b64 = get_base64_of_bin_file("favicon.png")
+    logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="height: 65px;">' if logo_b64 else ""
+    st.markdown(f"""
+        <div style="background-color: #1e1e1e; padding: 35px; border-radius: 12px; border-left: 6px solid #ff4b4b; box-shadow: 0 4px 10px rgba(0,0,0,0.4); margin-bottom: 30px;">
+            <h1 class="home-title" style="color: white; margin-top: 0px;">{logo_html} Benefits Platform</h1>
+            <h3 style="color: #ff4b4b; font-weight: 500; margin-top: 15px; margin-bottom: 10px;">Bem-vindos ao V4 Benefits Intelligence Platform.</h3>
+            <p style="color: #cccccc; font-size: 16px; max-width: 900px; margin-bottom: 0px;">Plataforma estratégica para gestão e inteligência dos benefícios V4.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    st.markdown("Escolha uma opção no menu lateral para avançar.")
+
+elif aba_selecionada == "Orçamento de Benefícios":
+    st.header("🎯 Orçamento de Benefícios")
+    st.markdown("<br>", unsafe_allow_html=True)
+    tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
+    with tab_2026: renderizar_aba_orcamento("2026", GID_2026)
+    with tab_2025: renderizar_aba_orcamento("2025", GID_2025)
+
+elif aba_selecionada == "Análise Financeira":
+    st.header("⚖️ Análise Financeira (Mês a Mês)")
+    st.caption("Selecione o mês abaixo para comparar o desempenho exato entre 2025 e 2026.")
+    with st.spinner("Carregando dados..."):
+        df_2025 = load_data(GID_2025)
+        df_2026 = load_data(GID_2026)
+    if df_2025 is not None and df_2026 is not None:
+        col_real = achar_coluna(df_2025, ["realizado", "executado", "soma"])
+        col_mes_25 = achar_coluna(df_2025, ["mês", "mes", "data"])
+        col_mes_26 = achar_coluna(df_2026, ["mês", "mes", "data"])
+        col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
+        col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
+        f1, f2 = st.columns(2)
+        LISTA_MESES_EXTENSO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+        mes_selecionado = f1.selectbox("📅 Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
+        ordem_mes = get_mes_ordem(mes_selecionado)
+        df_25_m = df_2025[df_2025[col_mes_25].apply(get_mes_ordem) == ordem_mes]
+        df_26_m = df_2026[df_2026[col_mes_26].apply(get_mes_ordem) == ordem_mes]
+        bens_total = sorted(list(set(df_25_m[col_ben_25].unique()) | set(df_26_m[col_ben_26].unique())))
+        sel_ben = f2.multiselect("🔍 Filtrar Benefícios (Opcional):", bens_total)
+        if sel_ben:
+            df_25_final = df_25_m[df_25_m[col_ben_25].isin(sel_ben)]
+            df_26_final = df_26_m[df_26_m[col_ben_26].isin(sel_ben)]
+        else:
+            df_25_final = df_25_m
+            df_26_final = df_26_m
+        total_25 = df_25_final[col_real].sum()
+        total_26 = df_26_final[col_real].sum()
+        delta = total_26 - total_25
+        delta_perc = (delta / total_25 * 100) if total_25 > 0 else 0
+        st.markdown(f"### Resultados de **{mes_selecionado}**")
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Realizado 2025", formatar_moeda(total_25))
+        k2.metric("Realizado 2026", formatar_moeda(total_26))
+        k3.metric("Diferença (R$)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
+        st.markdown("---")
+        view_25 = df_25_final.groupby(col_ben_25)[col_real].sum().reset_index(); view_25.columns = ['Benefício', 'Valor']; view_25['Ano'] = '2025'
+        view_26 = df_26_final.groupby(col_ben_26)[col_real].sum().reset_index(); view_26.columns = ['Benefício', 'Valor']; view_26['Ano'] = '2026'
+        df_chart = pd.concat([view_25, view_26]).sort_values('Valor', ascending=False)
+        fig = px.bar(df_chart, x="Benefício", y="Valor", color="Ano", barmode="group", text_auto='.2s', color_discrete_map={'2025': '#999999', '2026': '#CC0000'}, height=500)
+        fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title=None, yaxis_title="Custo Realizado")
+        st.plotly_chart(fig, use_container_width=True)
+
+# === NOVA TELA: BENEFITS EFFICIENCY MAP ===
+elif aba_selecionada == "Benefits Efficiency Map":
+    st.header("🗺️ Benefits Efficiency Map")
+    st.caption("Visão estratégica de escala, custo e eficiência por Razão Social (Unificando Saúde e Educação).")
+
+    # 1. Carrega Dados Financeiros (Vidas e Custos)
+    df_saude = padronizar_colunas(load_data(GID_BASE_COMPLETA), "V4 - Starbem")
+    df_wyden = padronizar_colunas(load_data(GID_WYDEN), "Wyden")
+    df_ep = padronizar_colunas(load_data(GID_EP), "English Pass")
+    df_staage = padronizar_colunas(load_data(GID_STAAGE), "Staage")
+
+    dfs = [d for d in [df_saude, df_wyden, df_ep, df_staage] if d is not None]
+    if dfs: df_detalhado = pd.concat(dfs, ignore_index=True)
+    else: df_detalhado = pd.DataFrame()
+
+    # 2. Carrega Dados de Consultas (Saúde)
+    df_consultas_raw = load_data(GID_CONSULTAS)
+    df_consultas = processar_consultas(df_consultas_raw)
+
+    if df_detalhado.empty and df_consultas is None:
+        st.info("ℹ️ Para ver a visão completa, insira os GIDs das abas no final do código.")
+        # MOCK APENAS SE TUDO ESTIVER VAZIO
+        mock_data = {
+            "Razão Social": ["REGECOM MARKETING LTDA"]*5 + ["V4 COMPANY S.A."]*10,
+            "Benefício": ["V4 - Starbem"]*5 + ["V4 - Starbem"]*10,
+            "Custo_Calculado": [59.90]*15,
+            "Nome": [f"Funcionario {i}" for i in range(15)],
+            "Regional": ["Geral"]*15
+        }
+        df_detalhado = pd.DataFrame(mock_data)
+        df_consultas = pd.DataFrame([{"Razão Social": "V4 COMPANY S.A.", "Status_Consulta": "Finalizado", "Especialidade": "Psicólogo"}]*20)
+
+    # --- FILTROS DE CONSULTAS ---
+    st.markdown("##### 🩺 Filtros de Utilização (Consultas)")
+    fc1, fc2 = st.columns(2)
+    
+    qtd_consultas_por_empresa = pd.DataFrame(columns=['Razão Social', 'Total_Consultas']) 
+    
+    if df_consultas is not None and not df_consultas.empty:
+        status_opcoes = sorted(df_consultas['Status_Consulta'].dropna().unique())
+        sel_status = fc1.multiselect("Status da Consulta:", status_opcoes, default=[s for s in status_opcoes if 'finalizado' in str(s).lower()])
+        
+        esp_opcoes = sorted(df_consultas['Especialidade'].dropna().unique())
+        sel_esp = fc2.multiselect("Especialidade:", esp_opcoes)
+        
+        df_cons_filt = df_consultas.copy()
+        if sel_status: df_cons_filt = df_cons_filt[df_cons_filt['Status_Consulta'].isin(sel_status)]
+        if sel_esp: df_cons_filt = df_cons_filt[df_cons_filt['Especialidade'].isin(sel_esp)]
+        
+        qtd_consultas_por_empresa = df_cons_filt.groupby('Razão Social').size().reset_index(name='Total_Consultas')
+    else:
+        st.caption("Dados de consultas não disponíveis ou GID não configurado.")
+
+    st.markdown("---")
+
+    # 3. AGREGAÇÃO FINAL (JOIN: Financeiro + Consultas)
+    df_agg = df_detalhado.groupby(['Razão Social']).agg(
+        Vidas=('Custo_Calculado', 'count'),
+        Custo_Total=('Custo_Calculado', 'sum'),
+        Lista_Beneficios=('Benefício', lambda x: list(set(x)))
+    ).reset_index()
+    
+    df_agg = pd.merge(df_agg, qtd_consultas_por_empresa, on='Razão Social', how='left')
+    df_agg['Total_Consultas'] = df_agg['Total_Consultas'].fillna(0).astype(int)
+    
+    df_agg['Per Capita'] = df_agg.apply(lambda x: x['Custo_Total'] / x['Vidas'] if x['Vidas'] > 0 else 0, axis=1)
+    
+    media_pc = df_agg['Per Capita'].mean()
+    total_vidas = df_agg['Vidas'].sum()
+    total_consultas_geral = df_agg['Total_Consultas'].sum()
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Per Capita Médio", formatar_moeda(media_pc))
+    k2.metric("Vidas Ativas 👥", int(total_vidas))
+    k3.metric("Consultas Filtradas 🩺", int(total_consultas_geral))
+    
+    utilizacao = (total_consultas_geral / total_vidas) if total_vidas > 0 else 0
+    k4.metric("Média Consultas/Vida", f"{utilizacao:.2f}")
+
+    std_pc = df_agg['Per Capita'].std() if len(df_agg) > 1 else 0
+    def classificar(val):
+        if val > media_pc + std_pc: return '🔴 Alto'
+        elif val < media_pc - std_pc: return '🟢 Eficiente'
+        return '🟡 Na Média'
+    df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
+
+    # 4. GRÁFICOS
+    col_grafico, col_ranking = st.columns([6, 4])
+    with col_grafico:
+        st.markdown("##### 🎯 Escala vs. Eficiência")
+        fig_scatter = px.scatter(
+            df_agg, x='Vidas', y='Per Capita', size='Custo_Total', color='Status',
+            hover_name='Razão Social', hover_data=['Total_Consultas'], size_max=40,
+            color_discrete_map={'🔴 Alto': '#cc0000', '🟡 Na Média': '#ff4b4b', '🟢 Eficiente': '#2e7d32'}
+        )
+        fig_scatter.add_hline(y=media_pc, line_dash="dot", line_color="#ffffff", annotation_text="Média")
+        fig_scatter.update_layout(template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0))
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+    with col_ranking:
+        st.markdown("##### 🏆 Top Utilizadores (Consultas)")
+        df_ranking = df_agg[['Razão Social', 'Vidas', 'Total_Consultas']].sort_values(by='Total_Consultas', ascending=False).head(10)
+        st.dataframe(df_ranking.style.background_gradient(cmap='Reds', subset=['Total_Consultas']), hide_index=True, use_container_width=True, height=450)
+
+    # 5. DRILL-DOWN DETALHADO
+    st.markdown("---")
+    st.markdown("##### 🔍 Raio-X Detalhado (Por Razão Social)")
+    
+    lista_razao = sorted(df_agg['Razão Social'].unique())
+    razao_sel = st.selectbox("Selecione a Razão Social para investigar:", ["Selecione..."] + lista_razao)
+
+    if razao_sel != "Selecione...":
+        df_filtrado = df_detalhado[df_detalhado['Razão Social'] == razao_sel]
+        dados_resumo = df_agg[df_agg['Razão Social'] == razao_sel].iloc[0]
+        
+        st.markdown(f"#### Detalhes: **{razao_sel}**")
+        
+        html_tags = ""
+        for ben in dados_resumo['Lista_Beneficios']:
+            classe_cor = "bg-outros"
+            nome_clean = str(ben).lower()
+            if "starbem" in nome_clean or "saúde" in nome_clean: classe_cor = "bg-saude"
+            elif "english" in nome_clean or "wyden" in nome_clean: classe_cor = "bg-educacao"
+            html_tags += f"<span class='badge-base {classe_cor}'>{ben}</span>"
+        st.markdown(html_tags, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Custo Total", formatar_moeda(dados_resumo['Custo_Total']))
+        r2.metric("Per Capita", formatar_moeda(dados_resumo['Per Capita']))
+        r3.metric("Vidas Ativas", int(dados_resumo['Vidas']))
+        r4.metric("Consultas Realizadas", int(dados_resumo['Total_Consultas']))
+        
+        col_d1, col_d2 = st.columns([1, 1])
+        with col_d1:
+            st.markdown("**Composição do Custo:**")
+            df_bar = df_filtrado.groupby('Benefício')['Custo_Calculado'].sum().reset_index().sort_values('Custo_Calculado')
+            df_bar['Texto'] = df_bar['Custo_Calculado'].apply(lambda x: formatar_moeda(x))
+            fig_bar = px.bar(df_bar, y='Benefício', x='Custo_Calculado', orientation='h', text='Texto')
+            fig_bar.update_traces(marker_color='#ff4b4b', textposition='inside', insidetextanchor='middle', textfont=dict(color='white'))
+            fig_bar.update_layout(template="plotly_white", height=300, xaxis_visible=False, yaxis_title="")
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+        with col_d2:
+            st.markdown("**Top Especialidades Consultadas:**")
+            if df_consultas is not None and not df_consultas.empty:
+                df_cons_empresa = df_consultas[df_consultas['Razão Social'] == razao_sel]
+                if not df_cons_empresa.empty:
+                    top_esp = df_cons_empresa['Especialidade'].value_counts().reset_index()
+                    top_esp.columns = ['Especialidade', 'Qtd']
+                    fig_pie = px.pie(top_esp.head(5), values='Qtd', names='Especialidade', hole=0.4)
+                    fig_pie.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                else:
+                    st.info("Nenhuma consulta registrada para esta empresa.")
+            else:
+                st.caption("Dados de consultas indisponíveis.")
