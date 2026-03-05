@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# FUNÇÕES AUXILIARES
+# 2. FUNÇÕES GERAIS E AUXILIARES (Movidas para o topo para evitar bugs)
 # ==============================================================================
 def get_base64_of_bin_file(bin_file):
     try:
@@ -192,8 +192,100 @@ def processar_consultas(df):
     
     return df[['Razão Social', 'Status_Consulta', 'Especialidade']]
 
+def recarregar_app():
+    if hasattr(st, "rerun"): st.rerun()
+    else: st.experimental_rerun()
+
+# Função do orçamento unificada no topo
+def renderizar_aba_orcamento(ano, gid_atual):
+    try:
+        df = load_data(gid_atual)
+        if df is None or df.empty:
+            st.warning(f"Os dados de {ano} não foram encontrados ou estão vazios.")
+            return
+
+        f1, f2 = st.columns(2)
+        df_filt = df.copy()
+        col_mes = achar_coluna(df, ["mês", "mes", "data"])
+        col_ben = achar_coluna(df, ["beneficio", "benefício"])
+        col_real = achar_coluna(df, ["realizado", "executado", "soma", "custo", "valor"])
+        col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
+
+        if col_mes:
+            meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
+            sel_m = f1.multiselect("Filtrar por Mês:", meses, key=f"m_{ano}")
+            if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
+        if col_ben:
+            bens = sorted(df[col_ben].astype(str).unique())
+            sel_b = f2.multiselect("Filtrar por Benefício:", bens, key=f"b_{ano}")
+            if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
+
+        realizado = df_filt[col_real].sum() if col_real else 0
+        BUDGET_ANUAL = 3432000.00
+        saldo_diferenca = BUDGET_ANUAL - realizado
+        perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
+        cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Budget Mensal", "R$ 286.000,00")
+        c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
+        c3.metric("Realizado YTD", formatar_moeda(realizado), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
+        c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca))
+        
+        st.markdown("---")
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("Evolução Mensal")
+            if col_mes and col_real:
+                vars_p = [col_real]
+                if col_orc: vars_p.insert(0, col_orc)
+                df_c = df_filt.groupby(col_mes)[vars_p].sum().reset_index()
+                df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
+                df_c = df_c.sort_values('ordem')
+                df_c['Mes_Clean'] = df_c[col_mes].apply(limpar_nome_mes)
+                if not df_c.empty:
+                    df_m = df_c.melt(id_vars=['Mes_Clean', 'ordem'], value_vars=vars_p, var_name="Tipo", value_name="Valor")
+                    cores = {col_real: '#CC0000'}; 
+                    if col_orc: cores[col_orc] = '#D3D3D3'
+                    fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
+                    fig.add_scatter(x=df_c['Mes_Clean'], y=df_c[col_real], mode='lines+markers', name='Tendência', line=dict(color='#ffffff', width=2.5, shape='spline'), marker=dict(size=8, color='#ffffff', line=dict(width=1, color='#000000')), showlegend=False)
+                    fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title="", xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()})
+                    st.plotly_chart(fig, use_container_width=True)
+        with g2:
+            st.subheader("Distribuição Estratégica")
+            if col_ben and col_real:
+                df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
+                total_real = df_p[col_real].sum()
+                if total_real > 0:
+                    df_p['Percentual'] = df_p[col_real] / total_real
+                    df_final_p = df_p.sort_values(col_real, ascending=True)
+                    df_final_p['Cor'] = df_final_p.apply(lambda x: '#990000' if x[col_real] == df_final_p[col_real].max() else '#ff4b4b', axis=1)
+                    df_final_p['Texto'] = df_final_p.apply(lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1)
+                    fig_p = px.bar(df_final_p, y=col_ben, x=col_real, orientation='h', text='Texto')
+                    fig_p.update_traces(marker_color=df_final_p['Cor'], textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=13))
+                    fig_p.update_layout(template="plotly_white", xaxis_visible=False, yaxis_title="", margin=dict(l=0, r=0, t=10, b=0), height=400)
+                    st.plotly_chart(fig_p, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("📑 Visão Matricial Detalhada")
+        if col_ben and col_mes and col_real and not df_filt.empty:
+            piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
+            piv = piv[sorted(piv.columns, key=get_mes_ordem)]
+            piv.columns = [limpar_nome_mes(c) for c in piv.columns]
+            piv["Total Anual"] = piv.sum(axis=1)
+            piv = piv.sort_values("Total Anual", ascending=False)
+            lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
+            piv = pd.concat([piv, lin_tot.to_frame().T])
+            sty = piv.style.format("R$ {:,.2f}")
+            cols = [c for c in piv.columns if c != "Total Anual"]
+            sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
+            sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
+            st.dataframe(sty, use_container_width=True)
+    except Exception as e:
+        st.error(f"Erro ao renderizar a visão de orçamento. Detalhe técnico: {e}")
+
 # ==============================================================================
-# 🔒 SISTEMA DE LOGIN
+# 3. SISTEMA DE LOGIN
 # ==============================================================================
 def check_password():
     CREDENCIAIS = {"Admin Opers": "BenefitsV4Company", "diretoria": "V4Diretoria2026"}
@@ -227,12 +319,8 @@ def check_password():
 
 if not check_password(): st.stop()
 
-def recarregar_app():
-    if hasattr(st, "rerun"): st.rerun()
-    else: st.experimental_rerun()
-
 # ==============================================================================
-# NAVEGAÇÃO EXPANDIDA
+# 4. NAVEGAÇÃO LATERAL (SIDEBAR)
 # ==============================================================================
 usuario_atual = st.session_state.get("usuario_logado", "Visitante")
 role = st.session_state.get("role", "viewer")
@@ -240,6 +328,7 @@ st.sidebar.success(f"👤 **{usuario_atual}**")
 if role == "admin": st.sidebar.caption("🔧 Modo Admin Ativo")
 st.sidebar.markdown("---")
 
+# 🔴🔴🔴 SEUS GIDS DA BASE DE DADOS 🔴🔴🔴
 GID_2026 = "1350897026"
 GID_2025 = "1743422062"
 GID_BASE_COMPLETA = "1919747553" # Saúde
@@ -250,26 +339,29 @@ GID_CONSULTAS = "" # Consultas
 
 OPCOES_MENU = [
     "Início", 
-    "Visão Global de Pessoas",        # NOVO
+    "Visão Global de Pessoas",
     "Orçamento de Benefícios", 
     "Análise Financeira", 
     "Benefits Efficiency Map",
-    "Sazonalidade Preditiva",         # NOVO
-    "Simulador & Reinvestimento"      # NOVO
+    "Sazonalidade Preditiva",
+    "Simulador & Reinvestimento"
 ]
+
 st.sidebar.header("Navegação Estratégica")
 aba_selecionada = st.sidebar.radio("Escolha a Visão:", OPCOES_MENU, label_visibility="collapsed")
 
 st.sidebar.markdown("<br><br><br>", unsafe_allow_html=True) 
+
 if st.sidebar.button("🔄 Atualizar Dados", use_container_width=True):
     st.cache_data.clear()
     recarregar_app()
+
 if st.sidebar.button("Sair / Logout", use_container_width=True):
     st.session_state["password_correct"] = False
     recarregar_app()
 
 # ==============================================================================
-# LÓGICA DAS TELAS
+# 5. RENDERIZAÇÃO DAS TELAS ESCOLHIDAS
 # ==============================================================================
 
 if aba_selecionada == "Início":
@@ -310,19 +402,15 @@ if aba_selecionada == "Início":
     fig_executivo.update_layout(template="plotly_white", yaxis_visible=False, xaxis_title="", height=350, margin=dict(t=30, b=0, l=0, r=0))
     st.plotly_chart(fig_executivo, use_container_width=True)
 
-# ------------------------------------------------------------------------------
-# 🆕 NOVA TELA: VISÃO GLOBAL DE PESSOAS
-# ------------------------------------------------------------------------------
 elif aba_selecionada == "Visão Global de Pessoas":
     st.header("🏢 Visão Global do Custo de Pessoas")
     st.caption("Integração de Folha de Pagamento, Encargos e Benefícios (Base Demonstrativa).")
     
     st.info("ℹ️ **Módulo em Desenvolvimento:** Esta tela exibirá dados reais assim que as planilhas de Folha/RH forem integradas.")
     
-    # Dados Simulados (Mockup de Folha)
-    mock_folha = 15000000 # 15 Milhões em Folha
-    mock_encargos = 6000000 # 6 Milhões em Encargos
-    mock_beneficios = 3383444 # Nossos 3.3 Milhões Reais
+    mock_folha = 15000000 
+    mock_encargos = 6000000 
+    mock_beneficios = 3383444 
     custo_total_pessoas = mock_folha + mock_encargos + mock_beneficios
     
     c1, c2, c3, c4 = st.columns(4)
@@ -355,99 +443,323 @@ elif aba_selecionada == "Visão Global de Pessoas":
         fig_bar_dep.update_layout(template="plotly_white", xaxis_visible=False)
         st.plotly_chart(fig_bar_dep, use_container_width=True)
 
-# ------------------------------------------------------------------------------
-# TELAS ORIGINAIS (Orçamento e Análise)
-# ------------------------------------------------------------------------------
 elif aba_selecionada == "Orçamento de Benefícios":
     st.header("🎯 Orçamento de Benefícios")
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    def renderizar_aba_orcamento(ano, gid_atual):
-        try:
-            df = load_data(gid_atual)
-            if df is None or df.empty:
-                st.warning(f"Os dados de {ano} não foram encontrados ou estão vazios.")
-                return
-
-            f1, f2 = st.columns(2)
-            df_filt = df.copy()
-            col_mes = achar_coluna(df, ["mês", "mes", "data"])
-            col_ben = achar_coluna(df, ["beneficio", "benefício"])
-            col_real = achar_coluna(df, ["realizado", "executado", "soma"])
-            col_orc = achar_coluna(df, ["orçado", "orcado", "budget"])
-
-            if col_mes:
-                meses = sorted(df[col_mes].astype(str).unique(), key=get_mes_ordem)
-                sel_m = f1.multiselect("Filtrar por Mês:", meses, key=f"m_{ano}")
-                if sel_m: df_filt = df_filt[df_filt[col_mes].isin(sel_m)]
-            if col_ben:
-                bens = sorted(df[col_ben].astype(str).unique())
-                sel_b = f2.multiselect("Filtrar por Benefício:", bens, key=f"b_{ano}")
-                if sel_b: df_filt = df_filt[df_filt[col_ben].isin(sel_b)]
-
-            realizado = df_filt[col_real].sum() if col_real else 0
-            BUDGET_ANUAL = 3432000.00
-            saldo_diferenca = BUDGET_ANUAL - realizado
-            perc_uso = realizado / BUDGET_ANUAL if BUDGET_ANUAL > 0 else 0
-            cor_percentual = "normal" if perc_uso <= 1.0 else "inverse"
-            
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Budget Mensal", "R$ 286.000,00")
-            c2.metric("Budget Anual", formatar_moeda(BUDGET_ANUAL))
-            c3.metric("Realizado YTD", formatar_moeda(realizado), delta=f"{perc_uso*100:.1f}% consumido", delta_color=cor_percentual)
-            c4.metric("Saldo Anual", formatar_moeda(saldo_diferenca))
-            
-            st.markdown("---")
-            g1, g2 = st.columns(2)
-            with g1:
-                st.subheader("Evolução Mensal")
-                if col_mes and col_real:
-                    vars_p = [col_real]
-                    if col_orc: vars_p.insert(0, col_orc)
-                    df_c = df_filt.groupby(col_mes)[vars_p].sum().reset_index()
-                    df_c['ordem'] = df_c[col_mes].apply(get_mes_ordem)
-                    df_c = df_c.sort_values('ordem')
-                    df_c['Mes_Clean'] = df_c[col_mes].apply(limpar_nome_mes)
-                    if not df_c.empty:
-                        df_m = df_c.melt(id_vars=['Mes_Clean', 'ordem'], value_vars=vars_p, var_name="Tipo", value_name="Valor")
-                        cores = {col_real: '#CC0000'}; 
-                        if col_orc: cores[col_orc] = '#D3D3D3'
-                        fig = px.bar(df_m, x="Mes_Clean", y="Valor", color="Tipo", barmode="group", text_auto='.2s', color_discrete_map=cores)
-                        fig.add_scatter(x=df_c['Mes_Clean'], y=df_c[col_real], mode='lines+markers', name='Tendência', line=dict(color='#ffffff', width=2.5, shape='spline'), marker=dict(size=8, color='#ffffff', line=dict(width=1, color='#000000')), showlegend=False)
-                        fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title="", xaxis={'categoryorder':'array', 'categoryarray': df_c['Mes_Clean'].unique()})
-                        st.plotly_chart(fig, use_container_width=True)
-            with g2:
-                st.subheader("Distribuição Estratégica")
-                if col_ben and col_real:
-                    df_p = df_filt.groupby(col_ben)[col_real].sum().reset_index()
-                    total_real = df_p[col_real].sum()
-                    if total_real > 0:
-                        df_p['Percentual'] = df_p[col_real] / total_real
-                        df_final_p = df_p.sort_values(col_real, ascending=True)
-                        df_final_p['Cor'] = df_final_p.apply(lambda x: '#990000' if x[col_real] == df_final_p[col_real].max() else '#ff4b4b', axis=1)
-                        df_final_p['Texto'] = df_final_p.apply(lambda x: f"R$ {x[col_real]:,.0f}".replace(',','_').replace('.',',').replace('_','.') + f" ({x['Percentual']*100:.1f}%)", axis=1)
-                        fig_p = px.bar(df_final_p, y=col_ben, x=col_real, orientation='h', text='Texto')
-                        fig_p.update_traces(marker_color=df_final_p['Cor'], textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=13))
-                        fig_p.update_layout(template="plotly_white", xaxis_visible=False, yaxis_title="", margin=dict(l=0, r=0, t=10, b=0), height=400)
-                        st.plotly_chart(fig_p, use_container_width=True)
-            
-            st.markdown("---")
-            st.subheader("📑 Visão Matricial Detalhada")
-            if col_ben and col_mes and col_real and not df_filt.empty:
-                piv = df_filt.pivot_table(index=col_ben, columns=col_mes, values=col_real, aggfunc='sum', fill_value=0)
-                piv = piv[sorted(piv.columns, key=get_mes_ordem)]
-                piv.columns = [limpar_nome_mes(c) for c in piv.columns]
-                piv["Total Anual"] = piv.sum(axis=1)
-                piv = piv.sort_values("Total Anual", ascending=False)
-                lin_tot = piv.sum(); lin_tot.name = "TOTAL GERAL"
-                piv = pd.concat([piv, lin_tot.to_frame().T])
-                sty = piv.style.format("R$ {:,.2f}")
-                cols = [c for c in piv.columns if c != "Total Anual"]
-                sty = sty.background_gradient(cmap="Reds", subset=(piv.index[:-1], cols), vmin=0)
-                sty = sty.applymap(lambda x: "background-color: #f0f2f6; color: black; font-weight: bold;", subset=["Total Anual"])
-                st.dataframe(sty, use_container_width=True)
-        except Exception as e:
-            st.error(f"Erro ao renderizar a visão de orçamento. {e}")
-
     tab_2026, tab_2025 = st.tabs(["📅 Visão 2026", "📅 Visão 2025"])
-    with tab_2026: renderizar_aba
+    with tab_2026: renderizar_aba_orcamento("2026", GID_2026)
+    with tab_2025: renderizar_aba_orcamento("2025", GID_2025)
+
+elif aba_selecionada == "Análise Financeira":
+    st.header("⚖️ Análise Financeira (Mês a Mês)")
+    st.caption("Selecione o mês abaixo para comparar o desempenho exato entre 2025 e 2026.")
+    try:
+        with st.spinner("Carregando dados..."):
+            df_2025 = load_data(GID_2025)
+            df_2026 = load_data(GID_2026)
+        
+        if df_2025 is not None and df_2026 is not None:
+            col_real_25 = achar_coluna(df_2025, ["realizado", "executado", "soma", "custo", "valor"])
+            col_real_26 = achar_coluna(df_2026, ["realizado", "executado", "soma", "custo", "valor"])
+            col_mes_25 = achar_coluna(df_2025, ["mês", "mes", "data"])
+            col_mes_26 = achar_coluna(df_2026, ["mês", "mes", "data"])
+            col_ben_25 = achar_coluna(df_2025, ["beneficio", "benefício"])
+            col_ben_26 = achar_coluna(df_2026, ["beneficio", "benefício"])
+
+            if all([col_real_25, col_real_26, col_mes_25, col_mes_26, col_ben_25, col_ben_26]):
+                f1, f2 = st.columns(2)
+                LISTA_MESES_EXTENSO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+                mes_selecionado = f1.selectbox("📅 Selecione o Mês:", LISTA_MESES_EXTENSO, index=0)
+                
+                ordem_mes = get_mes_ordem(mes_selecionado)
+                df_25_m = df_2025[df_2025[col_mes_25].apply(get_mes_ordem) == ordem_mes]
+                df_26_m = df_2026[df_2026[col_mes_26].apply(get_mes_ordem) == ordem_mes]
+                
+                bens_25 = df_25_m[col_ben_25].unique().tolist() if not df_25_m.empty else []
+                bens_26 = df_26_m[col_ben_26].unique().tolist() if not df_26_m.empty else []
+                bens_total = sorted(list(set(bens_25) | set(bens_26)))
+                
+                sel_ben = f2.multiselect("🔍 Filtrar Benefícios (Opcional):", bens_total)
+                
+                if sel_ben:
+                    df_25_final = df_25_m[df_25_m[col_ben_25].isin(sel_ben)]
+                    df_26_final = df_26_m[df_26_m[col_ben_26].isin(sel_ben)]
+                else:
+                    df_25_final = df_25_m
+                    df_26_final = df_26_m
+                    
+                total_25 = df_25_final[col_real_25].sum() if not df_25_final.empty else 0
+                total_26 = df_26_final[col_real_26].sum() if not df_26_final.empty else 0
+                delta = total_26 - total_25
+                delta_perc = (delta / total_25 * 100) if total_25 > 0 else 0
+                
+                st.markdown(f"### Resultados de **{mes_selecionado}**")
+                k1, k2, k3 = st.columns(3)
+                k1.metric("Realizado 2025", formatar_moeda(total_25))
+                k2.metric("Realizado 2026", formatar_moeda(total_26))
+                k3.metric("Diferença (R$)", formatar_moeda(delta), delta=f"{delta_perc:.1f}%", delta_color="inverse")
+                
+                st.markdown("---")
+                
+                view_25 = df_25_final.groupby(col_ben_25)[col_real_25].sum().reset_index() if not df_25_final.empty else pd.DataFrame(columns=[col_ben_25, col_real_25])
+                view_25.columns = ['Benefício', 'Valor']; view_25['Ano'] = '2025'
+                
+                view_26 = df_26_final.groupby(col_ben_26)[col_real_26].sum().reset_index() if not df_26_final.empty else pd.DataFrame(columns=[col_ben_26, col_real_26])
+                view_26.columns = ['Benefício', 'Valor']; view_26['Ano'] = '2026'
+                
+                df_chart = pd.concat([view_25, view_26]).sort_values('Valor', ascending=False)
+                if not df_chart.empty:
+                    fig = px.bar(df_chart, x="Benefício", y="Valor", color="Ano", barmode="group", text_auto='.2s', color_discrete_map={'2025': '#999999', '2026': '#CC0000'}, height=500)
+                    fig.update_layout(template="plotly_white", yaxis_tickprefix="R$ ", xaxis_title=None, yaxis_title="Custo Realizado")
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info(f"Sem dados financeiros lançados para o mês de {mes_selecionado}.")
+            else:
+                st.warning("⚠️ Algumas colunas não foram encontradas na planilha.")
+        else:
+            st.info("Carregando planilhas financeiras...")
+    except Exception as e:
+        st.error(f"Erro na Análise Financeira. {e}")
+
+elif aba_selecionada == "Benefits Efficiency Map":
+    st.header("🗺️ Benefits Efficiency Map")
+    st.caption("Visão estratégica de escala, custo e eficiência por Razão Social (Unificando Saúde e Educação).")
+
+    try:
+        df_saude = padronizar_colunas(load_data(GID_BASE_COMPLETA), "V4 - Starbem")
+        df_wyden = padronizar_colunas(load_data(GID_WYDEN), "Wyden")
+        df_ep = padronizar_colunas(load_data(GID_EP), "English Pass")
+        df_staage = padronizar_colunas(load_data(GID_STAAGE), "Staage")
+
+        dfs = [d for d in [df_saude, df_wyden, df_ep, df_staage] if d is not None]
+        df_detalhado = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+        df_consultas_raw = load_data(GID_CONSULTAS)
+        df_consultas = processar_consultas(df_consultas_raw)
+
+        if df_detalhado.empty and df_consultas is None:
+            st.info("ℹ️ Exibindo dados simulados. Para ver a visão completa, insira os GIDs das abas.")
+            mock_data = {
+                "Razão Social": ["REGECOM MARKETING LTDA"]*5 + ["V4 COMPANY S.A."]*10,
+                "Benefício": ["V4 - Starbem"]*5 + ["V4 - Starbem"]*10,
+                "Custo_Calculado": [59.90]*15,
+                "Nome": [f"Funcionario {i}" for i in range(15)],
+                "Regional": ["Geral"]*15
+            }
+            df_detalhado = pd.DataFrame(mock_data)
+
+        st.markdown("##### 🩺 Filtros de Utilização (Consultas)")
+        fc1, fc2 = st.columns(2)
+        
+        qtd_consultas_por_empresa = pd.DataFrame(columns=['Razão Social', 'Total_Consultas']) 
+        
+        if df_consultas is not None and not df_consultas.empty:
+            status_opcoes = sorted(df_consultas['Status_Consulta'].dropna().unique())
+            sel_status = fc1.multiselect("Status da Consulta:", status_opcoes, default=[s for s in status_opcoes if 'finalizado' in str(s).lower()])
+            esp_opcoes = sorted(df_consultas['Especialidade'].dropna().unique())
+            sel_esp = fc2.multiselect("Especialidade:", esp_opcoes)
+            
+            df_cons_filt = df_consultas.copy()
+            if sel_status: df_cons_filt = df_cons_filt[df_cons_filt['Status_Consulta'].isin(sel_status)]
+            if sel_esp: df_cons_filt = df_cons_filt[df_cons_filt['Especialidade'].isin(sel_esp)]
+            
+            qtd_consultas_por_empresa = df_cons_filt.groupby('Razão Social').size().reset_index(name='Total_Consultas')
+
+        st.markdown("---")
+
+        if not df_detalhado.empty:
+            df_agg = df_detalhado.groupby(['Razão Social']).agg(
+                Vidas=('Custo_Calculado', 'count'),
+                Custo_Total=('Custo_Calculado', 'sum'),
+                Lista_Beneficios=('Benefício', lambda x: list(set(x)))
+            ).reset_index()
+            
+            if not qtd_consultas_por_empresa.empty:
+                df_agg = pd.merge(df_agg, qtd_consultas_por_empresa, on='Razão Social', how='left')
+                df_agg['Total_Consultas'] = df_agg['Total_Consultas'].fillna(0).astype(int)
+            else:
+                df_agg['Total_Consultas'] = 0
+                
+            df_agg['Per Capita'] = df_agg.apply(lambda x: x['Custo_Total'] / x['Vidas'] if x['Vidas'] > 0 else 0, axis=1)
+            
+            media_pc = df_agg['Per Capita'].mean()
+            total_vidas = df_agg['Vidas'].sum()
+            total_consultas_geral = df_agg['Total_Consultas'].sum()
+
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Per Capita Médio", formatar_moeda(media_pc))
+            k2.metric("Vidas Ativas 👥", int(total_vidas))
+            k3.metric("Consultas Filtradas 🩺", int(total_consultas_geral))
+            
+            utilizacao = (total_consultas_geral / total_vidas) if total_vidas > 0 else 0
+            k4.metric("Média Consultas/Vida", f"{utilizacao:.2f}")
+
+            std_pc = df_agg['Per Capita'].std() if len(df_agg) > 1 else 0
+            def classificar(val):
+                if val > media_pc + std_pc: return '🔴 Alto'
+                elif val < media_pc - std_pc: return '🟢 Eficiente'
+                return '🟡 Na Média'
+            df_agg['Status'] = df_agg['Per Capita'].apply(classificar)
+
+            col_grafico, col_ranking = st.columns([6, 4])
+            with col_grafico:
+                st.markdown("##### 🎯 Escala vs. Eficiência")
+                fig_scatter = px.scatter(
+                    df_agg, x='Vidas', y='Per Capita', size='Custo_Total', color='Status',
+                    hover_name='Razão Social', hover_data=['Total_Consultas'], size_max=40,
+                    color_discrete_map={'🔴 Alto': '#cc0000', '🟡 Na Média': '#ff4b4b', '🟢 Eficiente': '#2e7d32'}
+                )
+                fig_scatter.add_hline(y=media_pc, line_dash="dot", line_color="#ffffff", annotation_text="Média")
+                fig_scatter.update_layout(template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig_scatter, use_container_width=True)
+
+            with col_ranking:
+                st.markdown("##### 🏆 Top Utilizadores (Consultas)")
+                df_ranking = df_agg[['Razão Social', 'Vidas', 'Total_Consultas']].sort_values(by='Total_Consultas', ascending=False).head(10)
+                st.dataframe(df_ranking.style.background_gradient(cmap='Reds', subset=['Total_Consultas']), hide_index=True, use_container_width=True, height=450)
+
+            st.markdown("---")
+            st.markdown("##### 🔍 Raio-X Detalhado (Por Razão Social)")
+            
+            lista_razao = sorted(df_agg['Razão Social'].unique())
+            razao_sel = st.selectbox("Selecione a Razão Social para investigar:", ["Selecione..."] + lista_razao)
+
+            if razao_sel != "Selecione...":
+                df_filtrado = df_detalhado[df_detalhado['Razão Social'] == razao_sel]
+                dados_resumo = df_agg[df_agg['Razão Social'] == razao_sel].iloc[0]
+                
+                st.markdown(f"#### Detalhes: **{razao_sel}**")
+                
+                html_tags = ""
+                lista_bens = dados_resumo['Lista_Beneficios']
+                if isinstance(lista_bens, list):
+                    for ben in lista_bens:
+                        classe_cor = "bg-outros"
+                        nome_clean = str(ben).lower()
+                        if "starbem" in nome_clean or "saúde" in nome_clean: classe_cor = "bg-saude"
+                        elif "english" in nome_clean or "wyden" in nome_clean: classe_cor = "bg-educacao"
+                        html_tags += f"<span class='badge-base {classe_cor}'>{ben}</span>"
+                st.markdown(html_tags, unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                r1, r2, r3, r4 = st.columns(4)
+                r1.metric("Custo Total", formatar_moeda(dados_resumo['Custo_Total']))
+                r2.metric("Per Capita", formatar_moeda(dados_resumo['Per Capita']))
+                r3.metric("Vidas Ativas", int(dados_resumo['Vidas']))
+                r4.metric("Consultas Realizadas", int(dados_resumo['Total_Consultas']))
+                
+                col_d1, col_d2 = st.columns([1, 1])
+                with col_d1:
+                    st.markdown("**Composição do Custo:**")
+                    df_bar = df_filtrado.groupby('Benefício')['Custo_Calculado'].sum().reset_index().sort_values('Custo_Calculado')
+                    df_bar['Texto'] = df_bar['Custo_Calculado'].apply(lambda x: formatar_moeda(x))
+                    fig_bar = px.bar(df_bar, y='Benefício', x='Custo_Calculado', orientation='h', text='Texto')
+                    fig_bar.update_traces(marker_color='#ff4b4b', textposition='inside', insidetextanchor='middle', textfont=dict(color='white'))
+                    fig_bar.update_layout(template="plotly_white", height=300, xaxis_visible=False, yaxis_title="")
+                    st.plotly_chart(fig_bar, use_container_width=True)
+                    
+                with col_d2:
+                    st.markdown("**Top Especialidades Consultadas:**")
+                    if df_consultas is not None and not df_consultas.empty:
+                        df_cons_empresa = df_consultas[df_consultas['Razão Social'] == razao_sel]
+                        if not df_cons_empresa.empty:
+                            top_esp = df_cons_empresa['Especialidade'].value_counts().reset_index()
+                            top_esp.columns = ['Especialidade', 'Qtd']
+                            fig_pie = px.pie(top_esp.head(5), values='Qtd', names='Especialidade', hole=0.4)
+                            fig_pie.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                            st.plotly_chart(fig_pie, use_container_width=True)
+                        else:
+                            st.info("Nenhuma consulta registrada para esta empresa.")
+                    else:
+                        st.caption("Dados de consultas indisponíveis.")
+    except Exception as e:
+        st.error(f"Erro ao processar o Mapa de Eficiência. Detalhe técnico: {e}")
+
+elif aba_selecionada == "Sazonalidade Preditiva":
+    st.header("⏳ Análise de Sazonalidade Predita")
+    st.caption("Mapeamento histórico de picos de despesas (Mockup de Conceito).")
+    st.info("ℹ️ **Módulo em Desenvolvimento:** Requer integração com histórico de RH para machine learning.")
+    
+    meses_saz = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    custo_base = np.array([2.0, 2.0, 2.5, 2.1, 2.1, 2.1, 2.4, 2.1, 2.1, 2.1, 2.6, 3.5]) 
+    
+    df_saz = pd.DataFrame({
+        "Mês": meses_saz,
+        "Custo Médio Histórico (Milhões)": custo_base,
+        "Alerta": ["", "", "Dissídio Sindical", "", "", "", "Férias Escolares", "", "", "", "Black Friday", "13º Salário"]
+    })
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Mês de Maior Risco de Caixa", "Dezembro", "13º e Férias", delta_color="inverse")
+    c2.metric("Variação Sazonal Máxima", "+75%", "Dezembro vs Média", delta_color="inverse")
+    c3.metric("Previsibilidade Histórica", "89%", "Alta Acurácia", delta_color="normal")
+    
+    st.markdown("---")
+    
+    fig_saz = px.area(df_saz, x="Mês", y="Custo Médio Histórico (Milhões)", markers=True)
+    fig_saz.update_traces(line_color='#cc0000', fillcolor='rgba(204, 0, 0, 0.1)')
+    
+    for i, row in df_saz.iterrows():
+        if row["Alerta"]:
+            fig_saz.add_annotation(x=row["Mês"], y=row["Custo Médio Histórico (Milhões)"], text=row["Alerta"],
+                                   showarrow=True, arrowhead=1, ax=0, ay=-40, font=dict(color="#cc0000", size=12))
+            
+    fig_saz.update_layout(template="plotly_white", height=450)
+    st.plotly_chart(fig_saz, use_container_width=True)
+
+elif aba_selecionada == "Simulador & Reinvestimento":
+    st.header("🎛️ Simulador de Benefícios & Reinvestimento")
+    st.caption("Modele novos benefícios, descubra o impacto anual e transforme sobras orçamentárias em Bônus/PLR.")
+    
+    saldo_atual_budget = 500000 
+    
+    st.markdown("#### 1. Configure o Cenário (Novo Benefício / Ajuste)")
+    s1, s2 = st.columns(2)
+    
+    with s1:
+        vidas_alvo = st.slider("👥 Vidas Impactadas", min_value=10, max_value=2000, value=500, step=10)
+    with s2:
+        custo_per_capita = st.slider("💰 Custo Mensal por Vida (R$)", min_value=10, max_value=1000, value=100, step=10)
+    
+    custo_mensal_adicional = vidas_alvo * custo_per_capita
+    custo_anual_adicional = custo_mensal_adicional * 12
+    saldo_restante = saldo_atual_budget - custo_anual_adicional
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Custo Mensal do Novo Cenário", formatar_moeda(custo_mensal_adicional))
+    k2.metric("Impacto Anual no Orçamento", formatar_moeda(custo_anual_adicional))
+    
+    cor_caixa = "normal" if saldo_restante >= 0 else "inverse"
+    k3.metric("Novo Saldo de Budget Anual", formatar_moeda(saldo_restante), delta=f"{'Sobrou Caixa' if saldo_restante >=0 else 'Estourou Budget'}", delta_color=cor_caixa)
+
+    st.markdown("---")
+    st.markdown("#### 2. Máquina de Reinvestimento (Transformando economia em PLR)")
+    
+    if saldo_restante > 0:
+        salario_medio_rede = 3500 
+        qtd_bonus = saldo_restante / salario_medio_rede
+        
+        st.success(f"✅ **Estratégia Positiva:** Mesmo implementando este benefício, você economizou **{formatar_moeda(saldo_restante)}** do budget anual.")
+        st.markdown(f"""
+        **O que podemos fazer com esse dinheiro?**
+        - Distribuir **{int(qtd_bonus)} salários integrais** (PLR) de R$ 3.500 como bônus de fim de ano para a operação.
+        - Ou contratar o pacote "Gympass + Terapia" para **{int(saldo_restante / 12 / 150)} vidas** adicionais.
+        """)
+        
+        fig_waterfall = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "total"],
+            x=["Budget Original", "Custo do Novo Benefício", "Saldo para Bônus/PLR"],
+            textposition="outside",
+            y=[saldo_atual_budget, -custo_anual_adicional, saldo_restante],
+            connector={"line": {"color": "rgb(63, 63, 63)"}},
+            decreasing={"marker": {"color": "#cc0000"}},
+            increasing={"marker": {"color": "#0044cc"}},
+            totals={"marker": {"color": "#2e7d32"}}
+        ))
+        fig_waterfall.update_layout(template="plotly_white", height=400)
+        st.plotly_chart(fig_waterfall, use_container_width=True)
+    else:
+        st.error(f"🔴 **Alerta de Estouro de Caixa:** Este cenário extrapola o orçamento em **{formatar_moeda(abs(saldo_restante))}**.")
+        st.info("💡 **Dica do Analytics:** Tente reduzir o número de vidas elegíveis ou negociar um valor per capita menor com o fornecedor.")
